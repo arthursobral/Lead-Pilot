@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+.next/
+out/
+
+# Environment — never commit secrets
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.production.local
+
+# Prisma
+*.db
+*.db-journal
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Coverage reports
+coverage/
+
+# Turbo
+.turbo/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg: theme('colors.stone.50');
+    --color-surface: theme('colors.white');
+    --color-border: theme('colors.stone.200');
+    --color-text-primary: theme('colors.stone.900');
+    --color-text-secondary: theme('colors.stone.500');
+    --color-text-muted: theme('colors.stone.400');
+    --color-accent: theme('colors.stone.800');
+    --sidebar-width: 240px;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-stone-50 text-stone-900;
+    font-feature-settings: 'kern' 1, 'liga' 1;
+  }
+
+  /*
+   * Prose-like headings — editorial, not dashboard.
+   * Weight stays medium to avoid the heavy "analytics" feel.
+   */
+  h1 { @apply text-2xl font-semibold tracking-tight text-stone-900; }
+  h2 { @apply text-xl font-semibold tracking-tight text-stone-900; }
+  h3 { @apply text-base font-medium text-stone-900; }
+  h4 { @apply text-sm font-medium text-stone-700; }
+}
+
+@layer utilities {
+  /* Sidebar scrollable area without visible scrollbar */
+  .sidebar-scroll {
+    scrollbar-width: none;
+  }
+  .sidebar-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}

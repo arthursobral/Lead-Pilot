@@ -1,0 +1,565 @@
+// LeadPilot -- Prisma Schema
+// MVP entities: TeamLead, Developer, PullRequest, PullRequestReview,
+//               MetricSnapshot, Observation, TimelineEntry, Fact,
+//               Insight, TalkingPoint, WeeklyReport
+//
+// Design rules:
+//   - No score, rank, or productivity column exists in this schema.
+//   - Metrics are context, not conclusions.
+//   - Every entity traces back to a person, not a number.
+//   - Json metadata fields provide extensibility without premature columns.
+//
+// Naming: snake_case table names via @@map(), camelCase Prisma fields.
+// IDs: cuid() -- URL-safe, time-sortable, no sequential information exposed.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum PullRequestState {
+  OPEN
+  CLOSED
+  MERGED
+}
+
+// GitHub pull request review state as returned by the GitHub API.
+enum ReviewState {
+  APPROVED
+  CHANGES_REQUESTED
+  COMMENTED
+  DISMISSED
+}
+
+// Observation types reflect coaching vocabulary, not HR vocabulary.
+enum ObservationType {
+  ACHIEVEMENT          // Significant positive moment worth recognising
+  CUSTOMER_FEEDBACK    // Feedback received from an external stakeholder
+  COACHING_OPPORTUNITY // Potential growth area the team lead wants to address
+  CONCERN              // Something worth monitoring -- not a judgment
+  LEADERSHIP           // A moment of technical or team leadership
+  MENTORING            // Developer supported a peer or junior
+  COMMUNICATION        // Notable communication event (positive or contextual)
+  INCIDENT             // Involvement in a production or operational incident
+  OWNERSHIP            // Developer took strong responsibility for an outcome
+  CONTEXT              // General contextual note that does not fit other types
+}
+
+// Severity describes impact, not judgment.
+// HIGH does not mean "bad" -- a HIGH achievement is also HIGH severity.
+enum ObservationSeverity {
+  LOW    // Small note, minor update
+  MEDIUM // Relevant feedback, noticeable moment
+  HIGH   // Major praise, critical incident, significant leadership moment
+}
+
+enum TimelineEntryType {
+  SIGNAL      // Automatically collected GitHub activity
+  OBSERVATION // Manually registered human context
+  ACHIEVEMENT // A significant positive moment (may come from an Observation)
+  INSIGHT     // An AI-generated interpretation was added
+  REPORT      // A weekly or periodic report was generated
+  MILESTONE   // A manually marked career or project milestone (future)
+}
+
+// Insight types -- insights are hypotheses, not verdicts.
+enum InsightType {
+  POSITIVE_SIGNAL      // "May suggest growing ownership"
+  COACHING_OPPORTUNITY // "There may be an opportunity to discuss..."
+  RISK                 // "Worth checking in about workload"
+  GROWTH_PATTERN       // "Appears to be expanding into..."
+  RECOGNITION          // "Worth recognising in the next 1:1"
+  WORKLOAD_SIGNAL      // "Activity pattern may indicate high load"
+  COMMUNICATION_SIGNAL // "Communication patterns may suggest..."
+  LEADERSHIP_SIGNAL    // "Shows signs of informal leadership"
+}
+
+// Confidence reflects the strength of supporting evidence.
+enum FactConfidence {
+  LOW    // Weak trend, limited data, single ambiguous event
+  MEDIUM // Pattern supported by multiple signals or observations
+  HIGH   // Direct human observation, explicit customer feedback, clear GitHub data
+}
+
+// =============================================================================
+// TEAM LEAD
+// =============================================================================
+
+// Primary user of LeadPilot.
+// Records observations, reviews timelines, receives insights and reports.
+model TeamLead {
+  id          String  @id @default(cuid())
+  email       String  @unique
+  name        String
+  githubLogin String? @unique
+  avatarUrl   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  developers    TeamLeadDeveloper[]
+  observations  Observation[]
+  weeklyReports WeeklyReport[]
+
+  @@map("team_leads")
+}
+
+// =============================================================================
+// DEVELOPER
+// =============================================================================
+
+// The person being contextualised by the system.
+// A Developer is never reduced to metrics -- metrics are only signals.
+//
+// githubId: GitHub's internal user ID -- stable even if login changes.
+// githubLogin: GitHub username -- can change; use githubId for identity.
+// metadata: extensible Json for future integrations (Jira, Slack, etc.)
+model Developer {
+  id          String  @id @default(cuid())
+  githubId    String  @unique
+  githubLogin String  @unique
+  name        String
+  email       String?
+  avatarUrl   String?
+  role        String? // "Backend Engineer", "Frontend Engineer", etc.
+  metadata    Json?   // Future: { jiraAccountId, slackUserId, ... }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teamLeads       TeamLeadDeveloper[]
+  pullRequests    PullRequest[]
+  reviews         PullRequestReview[]
+  metricSnapshots MetricSnapshot[]
+  observations    Observation[]
+  timelineEntries TimelineEntry[]
+  facts           Fact[]
+  insights        Insight[]
+
+  @@map("developers")
+}
+
+// Join table for TeamLead <-> Developer many-to-many.
+//
+// Many-to-many instead of one-to-many: the same GitHub developer may be
+// tracked by multiple team leads across teams. A join table prevents a
+// costly migration later.
+model TeamLeadDeveloper {
+  teamLeadId  String
+  developerId String
+  createdAt   DateTime @default(now())
+
+  teamLead  TeamLead  @relation(fields: [teamLeadId], references: [id], onDelete: Cascade)
+  developer Developer @relation(fields: [developerId], references: [id], onDelete: Cascade)
+
+  @@id([teamLeadId, developerId])
+  @@map("team_lead_developers")
+}
+
+// =============================================================================
+// SIGNALS -- GitHub Activity
+// =============================================================================
+
+// A PullRequest is an automatically collected GitHub Signal.
+// It represents engineering activity, not performance.
+//
+// githubNodeId: GitHub's global stable identifier.
+//   PR numbers are per-repository and collide across repos.
+//   The node ID is used as the upsert key during sync for idempotency.
+//
+// additions/deletions/changedFiles: raw size data for MetricsService.
+//   Used to compute average PR size patterns -- never shown as a score.
+//
+// labels/metadata: Json extension points for future GitHub fields.
+model PullRequest {
+  id           String           @id @default(cuid())
+  githubNodeId String           @unique
+  number       Int
+  title        String
+  body         String?
+  state        PullRequestState
+  draft        Boolean          @default(false)
+
+  repositoryName     String
+  repositoryFullName String // "org/repo"
+
+  developerId String // PR author
+
+  url String
+
+  // GitHub timestamps (distinct from our own createdAt/updatedAt)
+  githubCreatedAt DateTime
+  githubUpdatedAt DateTime
+  mergedAt        DateTime?
+  closedAt        DateTime?
+
+  // Size signals -- used for pattern detection, not scoring
+  additions    Int @default(0)
+  deletions    Int @default(0)
+  changedFiles Int @default(0)
+
+  labels   Json? // String[] of label names
+  metadata Json? // Future GitHub fields (milestone, project, etc.)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  developer       Developer           @relation(fields: [developerId], references: [id])
+  reviews         PullRequestReview[]
+  timelineEntries TimelineEntry[]
+
+  @@index([developerId])
+  @@index([repositoryFullName])
+  @@index([state])
+  @@index([githubCreatedAt])
+  @@map("pull_requests")
+}
+
+// A PullRequestReview is a review action taken on a pull request.
+// Stored separately from PullRequest because review activity is a distinct
+// signal from authoring activity.
+//
+// developerId is the REVIEWER, not the PR author.
+// Allows independently tracking "PRs authored" vs "reviews given".
+model PullRequestReview {
+  id            String      @id @default(cuid())
+  githubNodeId  String      @unique
+  pullRequestId String
+  developerId   String      // The reviewer
+
+  state       ReviewState
+  body        String?
+  submittedAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pullRequest     PullRequest     @relation(fields: [pullRequestId], references: [id])
+  developer       Developer       @relation(fields: [developerId], references: [id])
+  timelineEntries TimelineEntry[]
+
+  @@index([pullRequestId])
+  @@index([developerId])
+  @@index([submittedAt])
+  @@map("pull_request_reviews")
+}
+
+// =============================================================================
+// METRICS
+// =============================================================================
+
+// Aggregated view of a developer's technical activity for a specific period.
+// Created by MetricsService after each GitHub sync.
+//
+// Unique constraint on (developerId, periodStart, periodEnd) makes the
+// calculation job idempotent -- re-running safely upserts the snapshot.
+//
+// All metric fields are nullable: early snapshots may lack sufficient data.
+//
+// IMPORTANT: No "score", "rating", "rank", or "productivity" field exists.
+// These are patterns for coaching context, not performance measurements.
+model MetricSnapshot {
+  id          String   @id @default(cuid())
+  developerId String
+  periodStart DateTime
+  periodEnd   DateTime
+
+  // Pull request activity
+  pullRequestsOpened    Int    @default(0)
+  pullRequestsMerged    Int    @default(0)
+  pullRequestsClosed    Int    @default(0)
+  averagePrSizeLines    Float? // (additions + deletions) / merged count
+  averageMergeTimeHours Float? // Mean hours from PR open to merge
+
+  // Review activity
+  reviewsGiven    Int @default(0)
+  reviewsReceived Int @default(0)
+
+  // Which repos the developer was active in this period
+  activeRepositories String[]
+
+  createdAt DateTime @default(now())
+
+  developer Developer @relation(fields: [developerId], references: [id])
+
+  @@unique([developerId, periodStart, periodEnd])
+  @@index([developerId])
+  @@index([periodStart])
+  @@map("metric_snapshots")
+}
+
+// =============================================================================
+// OBSERVATIONS -- Human Context
+// =============================================================================
+
+// Manually registered human context from a Team Lead.
+// Observations are among the most important inputs in LeadPilot --
+// they capture what GitHub cannot: mentoring, customer feedback, ownership,
+// and leadership moments.
+//
+// occurredAt: when the event actually happened, not when it was recorded.
+//   A team lead may record an observation days after the fact.
+//
+// deletedAt: soft delete.
+//   Observations are irreplaceable human context. Hard deletion destroys
+//   history the AI layer may depend on. Normal queries filter deletedAt IS NULL.
+//
+// teamLeadId: who recorded the observation. Preserved for audit.
+model Observation {
+  id          String              @id @default(cuid())
+  developerId String
+  teamLeadId  String
+  type        ObservationType
+  severity    ObservationSeverity
+  summary     String              // Short description -- shown in timeline
+  detail      String?             // Extended notes -- shown in detail view
+  occurredAt  DateTime            // When the event happened
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete -- never hard-delete observations
+
+  developer       Developer       @relation(fields: [developerId], references: [id])
+  teamLead        TeamLead        @relation(fields: [teamLeadId], references: [id])
+  timelineEntries TimelineEntry[]
+  facts           Fact[]
+
+  @@index([developerId])
+  @@index([teamLeadId])
+  @@index([occurredAt])
+  @@index([type])
+  @@index([deletedAt])
+  @@map("observations")
+}
+
+// =============================================================================
+// TIMELINE
+// =============================================================================
+
+// A single chronological event in a developer's story.
+// Combines Signals and Observations into one unified, ordered view.
+//
+// Polymorphic source references:
+//   Prisma has no native polymorphism, so optional FKs are used.
+//   Exactly one FK is populated per row; `type` indicates which.
+//
+//   pullRequestId       -> SIGNAL (PR authored or merged)
+//   pullRequestReviewId -> SIGNAL (review submitted)
+//   observationId       -> OBSERVATION, ACHIEVEMENT
+//   insightId           -> INSIGHT
+//   weeklyReportId      -> REPORT
+//
+// summary: always populated. Pre-computed at insert time so the timeline
+//   renders without joining back to source entities on every query.
+//
+// occurredAt: the event's actual date. Timeline sorts by occurredAt DESC.
+model TimelineEntry {
+  id          String            @id @default(cuid())
+  developerId String
+  type        TimelineEntryType
+  summary     String            // Pre-computed display text
+  occurredAt  DateTime          // The date the event happened
+
+  // Polymorphic source -- at most one is populated
+  pullRequestId       String?
+  pullRequestReviewId String?
+  observationId       String?
+  insightId           String?
+  weeklyReportId      String?
+
+  createdAt DateTime @default(now())
+
+  developer         Developer          @relation(fields: [developerId], references: [id])
+  pullRequest       PullRequest?       @relation(fields: [pullRequestId], references: [id])
+  pullRequestReview PullRequestReview? @relation(fields: [pullRequestReviewId], references: [id])
+  observation       Observation?       @relation(fields: [observationId], references: [id])
+  insight           Insight?           @relation(fields: [insightId], references: [id])
+  weeklyReport      WeeklyReport?      @relation(fields: [weeklyReportId], references: [id])
+
+  @@index([developerId, occurredAt(sort: Desc)])
+  @@index([type])
+  @@map("timeline_entries")
+}
+
+// =============================================================================
+// KNOWLEDGE ENGINE -- Facts
+// =============================================================================
+
+// A structured, evidence-backed statement extracted by the Knowledge Engine.
+// Facts reduce hallucination by grounding every AI Insight in specific,
+// stored evidence rather than letting the LLM reason from raw data.
+//
+// sources: Json array of { type, id } objects.
+//   A fact can be derived from heterogeneous sources -- observations,
+//   pull requests, metric snapshots, or other facts.
+//   Json avoids a polymorphic join table; the Knowledge Engine resolves IDs.
+//
+// observationId: optional direct FK to the primary source observation.
+//   Allows "which facts came from this observation?" without parsing Json.
+//
+// Temporal scope:
+//   periodStart + periodEnd -> "Reviewed 18 PRs in June"
+//   occurredAt              -> "Received customer praise on Jun 10"
+model Fact {
+  id          String         @id @default(cuid())
+  developerId String
+  statement   String         // Human-readable factual statement
+  confidence  FactConfidence
+  sources     Json           // [{ type: 'observation'|'pull_request'|'metric_snapshot', id: string }]
+
+  periodStart DateTime? // Fact covers a period
+  periodEnd   DateTime?
+  occurredAt  DateTime? // Or a specific point in time
+
+  observationId String? // Direct FK to primary observation source (optional)
+
+  createdAt DateTime @default(now())
+
+  developer    Developer    @relation(fields: [developerId], references: [id])
+  observation  Observation? @relation(fields: [observationId], references: [id])
+  factInsights FactInsight[]
+
+  @@index([developerId])
+  @@index([confidence])
+  @@map("facts")
+}
+
+// =============================================================================
+// INSIGHTS -- AI Layer Output
+// =============================================================================
+
+// An AI-generated interpretation based on Facts, MetricSnapshots,
+// Observations, and Timeline context.
+//
+// Insights are hypotheses, not verdicts.
+// Every Insight must be grounded in evidence via FactInsight.
+//
+// The `summary` field must use hedged vocabulary:
+//   "may suggest", "one possible interpretation", "worth discussing".
+//   Enforced by InsightGenerator/ResponseParser at write time.
+//
+// model: the AI model version used for generation.
+//   Stored for reproducibility and quality evaluation over time.
+//
+// periodStart/periodEnd: the data window this insight covers.
+//   Period-scoped to prevent stale context from influencing output.
+model Insight {
+  id          String      @id @default(cuid())
+  developerId String
+  type        InsightType
+  summary     String      // AI-generated -- hedged language required
+  model       String?     // e.g. "gpt-4o-2024-08-06"
+  periodStart DateTime
+  periodEnd   DateTime
+
+  createdAt DateTime @default(now())
+
+  developer       Developer             @relation(fields: [developerId], references: [id])
+  talkingPoints   TalkingPoint[]
+  timelineEntries TimelineEntry[]
+  factInsights    FactInsight[]
+  weeklyReports   WeeklyReportInsight[]
+
+  @@index([developerId])
+  @@index([periodStart, periodEnd])
+  @@map("insights")
+}
+
+// A suggested topic for a 1:1 conversation, derived from an Insight.
+// TalkingPoints are a primary output Team Leads use when preparing.
+// They must be supportive, specific, and actionable.
+//
+// order: display ordering within the parent Insight.
+model TalkingPoint {
+  id        String @id @default(cuid())
+  insightId String
+  text      String
+  order     Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  insight Insight @relation(fields: [insightId], references: [id], onDelete: Cascade)
+
+  @@index([insightId])
+  @@map("talking_points")
+}
+
+// Join table: Fact <-> Insight many-to-many.
+// A single Fact can support multiple Insights.
+// A single Insight can be grounded in multiple Facts.
+model FactInsight {
+  factId    String
+  insightId String
+
+  fact    Fact    @relation(fields: [factId], references: [id], onDelete: Cascade)
+  insight Insight @relation(fields: [insightId], references: [id], onDelete: Cascade)
+
+  @@id([factId, insightId])
+  @@map("fact_insights")
+}
+
+// =============================================================================
+// REPORTS
+// =============================================================================
+
+// A generated summary for a TeamLead covering their team over a period.
+//
+// content: Json storing the full AI-generated report structure.
+//   Stored as Json because the report shape will evolve across phases
+//   without requiring schema migrations.
+//
+//   Expected shape (from DOMAIN_MODEL.md):
+//   {
+//     summary: string,
+//     developerSummaries: [{
+//       developerId: string,
+//       name: string,
+//       achievements: string[],
+//       risks: string[],
+//       talkingPoints: string[],
+//       coachingOpportunities: string[]
+//     }]
+//   }
+//
+// Unique on (teamLeadId, periodStart): prevents duplicate reports.
+// Re-generation upserts the existing row.
+model WeeklyReport {
+  id          String   @id @default(cuid())
+  teamLeadId  String
+  periodStart DateTime
+  periodEnd   DateTime
+  content     Json     // Full AI-generated report body
+
+  generatedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  teamLead        TeamLead              @relation(fields: [teamLeadId], references: [id])
+  insights        WeeklyReportInsight[]
+  timelineEntries TimelineEntry[]
+
+  @@unique([teamLeadId, periodStart])
+  @@index([teamLeadId])
+  @@map("weekly_reports")
+}
+
+// Join table: WeeklyReport <-> Insight many-to-many.
+// A weekly report references the insights generated for its period.
+// An insight may appear in a re-generated report for the same period.
+model WeeklyReportInsight {
+  weeklyReportId String
+  insightId      String
+
+  weeklyReport WeeklyReport @relation(fields: [weeklyReportId], references: [id], onDelete: Cascade)
+  insight      Insight      @relation(fields: [insightId], references: [id], onDelete: Cascade)
+
+  @@id([weeklyReportId, insightId])
+  @@map("weekly_report_insights")
+}
