@@ -25,11 +25,16 @@ export const envValidationSchema = Joi.object({
   JWT_SECRET: Joi.string().min(32).required(),
   JWT_EXPIRES_IN: Joi.string().default('7d'),
 
-  // GitHub OAuth — optional in Phase 1 (OAuth not yet implemented)
+  // GitHub personal access token for REST API sync (Day 2).
+  // Required scopes: repo (private repos) or public_repo (public only).
+  // Optional at boot: the app runs without GitHub features when absent.
+  GITHUB_TOKEN: Joi.string().optional().allow(''),
+
+  // GitHub OAuth -- optional until OAuth flow is implemented
   GITHUB_CLIENT_ID: Joi.string().optional().allow(''),
   GITHUB_CLIENT_SECRET: Joi.string().optional().allow(''),
   GITHUB_CALLBACK_URL: Joi.string().uri().optional().allow(''),
 
-  // OpenAI — optional in Phase 1 (AI features not yet implemented)
+  // OpenAI -- optional in Phase 1 (AI features not yet implemented)
   OPENAI_API_KEY: Joi.string().optional().allow(''),
 });

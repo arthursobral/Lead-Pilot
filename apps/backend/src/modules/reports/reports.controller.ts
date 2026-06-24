@@ -5,9 +5,9 @@ import { ReportsService } from './reports.service';
  * ReportsController
  *
  * Routes (Phase 7):
- *   GET  /api/reports                 — list reports for the team
- *   GET  /api/reports/:id             — get a specific report
- *   POST /api/reports/generate        — trigger report generation
+ *   GET  /api/reports                 - list reports for the team
+ *   GET  /api/reports/:id             - get a specific report
+ *   POST /api/reports/generate        - trigger report generation
  */
 @Controller('reports')
 export class ReportsController {

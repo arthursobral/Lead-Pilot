@@ -14,9 +14,9 @@ import { Observable, tap } from 'rxjs';
  * Logs every incoming request and its response time.
  * Registered globally in main.ts via app.useGlobalInterceptors().
  *
- * Format: METHOD /path — Xms
+ * Format: METHOD /path - Xms
  *
- * Kept intentionally minimal — we log method, path, and duration.
+ * Kept intentionally minimal - we log method, path, and duration.
  * Never log request bodies (may contain sensitive data).
  */
 @Injectable()

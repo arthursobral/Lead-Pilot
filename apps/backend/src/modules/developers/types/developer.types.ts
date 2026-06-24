@@ -1,7 +1,7 @@
 /**
  * DeveloperDomain is the internal representation of a Developer.
  *
- * The service layer works with this type — never with raw Prisma models.
+ * The service layer works with this type - never with raw Prisma models.
  * The mapper converts between Prisma ↔ DeveloperDomain ↔ DeveloperResponseDto.
  *
  * githubId is kept here because the service may need it for cross-module

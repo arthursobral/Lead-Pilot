@@ -7,15 +7,17 @@ import { DeveloperMapper } from './mapper/developer.mapper';
 /**
  * DevelopersModule owns the Developer domain entity.
  *
- * A Developer is a person tracked by the system — never ranked or scored,
+ * A Developer is a person tracked by the system -- never ranked or scored,
  * only contextualized through signals, observations, and insights.
  *
- * DevelopersService is exported so other modules (timeline, insights, reports)
- * can query developer data without importing the repository directly.
+ * Exports:
+ *   DevelopersService    -- consumed by timeline, insights, reports modules
+ *   DevelopersRepository -- consumed by GithubModule for sync-time upserts
+ *     that have no teamLead context (PR authors, reviewers)
  */
 @Module({
   controllers: [DevelopersController],
   providers: [DevelopersService, DevelopersRepository, DeveloperMapper],
-  exports: [DevelopersService],
+  exports: [DevelopersService, DevelopersRepository],
 })
 export class DevelopersModule {}

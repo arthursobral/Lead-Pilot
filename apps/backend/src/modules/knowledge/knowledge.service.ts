@@ -5,7 +5,7 @@ import { ObservationsService } from '../observations/observations.service';
 import { TimelineService } from '../timeline/timeline.service';
 
 /**
- * KnowledgeService — the Context Pack builder.
+ * KnowledgeService - the Context Pack builder.
  *
  * Responsibilities (Phase 5):
  *   - Gather developer profile, metrics, observations, timeline entries

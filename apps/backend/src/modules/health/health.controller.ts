@@ -6,8 +6,8 @@ import { HealthService } from './health.service';
  * HealthController exposes GET /health for infrastructure probes.
  *
  * HTTP semantics:
- *   200 OK              — all indicators healthy
- *   503 Service Unavail — one or more indicators failed
+ *   200 OK              - all indicators healthy
+ *   503 Service Unavail - one or more indicators failed
  *
  * The status code matters: load balancers and container orchestrators
  * (ECS, k8s) use it to decide whether to route traffic to this instance.

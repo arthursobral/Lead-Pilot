@@ -31,9 +31,14 @@ export const authConfig = registerAs('auth', () => ({
 }));
 
 export const githubConfig = registerAs('github', () => ({
-  clientId: process.env.GITHUB_CLIENT_ID as string,
-  clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
-  callbackUrl: process.env.GITHUB_CALLBACK_URL as string,
+  // Personal access token for REST API sync (Day 2).
+  // Read via configService.get<string>('github.token') in GithubApiClient.
+  // Required scopes: repo (private) or public_repo (public repos only).
+  token: process.env.GITHUB_TOKEN ?? '',
+  // OAuth fields - reserved for AuthModule GitHub OAuth flow (future phase).
+  clientId: process.env.GITHUB_CLIENT_ID ?? '',
+  clientSecret: process.env.GITHUB_CLIENT_SECRET ?? '',
+  callbackUrl: process.env.GITHUB_CALLBACK_URL ?? '',
 }));
 
 export const openaiConfig = registerAs('openai', () => ({

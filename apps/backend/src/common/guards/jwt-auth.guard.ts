@@ -8,7 +8,7 @@ import { AuthGuard } from '@nestjs/passport';
  * from the Authorization header using the JwtStrategy (defined in AuthModule).
  *
  * Applied per-route with @UseGuards(JwtAuthGuard).
- * Global application is not recommended — some routes (login, health) are public.
+ * Global application is not recommended - some routes (login, health) are public.
  */
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {}

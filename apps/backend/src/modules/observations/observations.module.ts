@@ -6,7 +6,7 @@ import { ObservationsRepository } from './observations.repository';
 /**
  * ObservationsModule owns the Observation domain entity.
  *
- * Observations are manually registered human context — the most important
+ * Observations are manually registered human context - the most important
  * input the platform receives that GitHub cannot provide.
  *
  * ObservationsService is exported so KnowledgeModule can include

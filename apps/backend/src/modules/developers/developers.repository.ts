@@ -133,4 +133,36 @@ export class DevelopersRepository {
       where: { githubId },
     });
   }
+
+  /**
+   * Upsert a developer by githubId without a team lead context.
+   *
+   * Used by the GitHub sync job to store PR authors and reviewers before
+   * a team lead has explicitly linked them. The team lead link is added
+   * separately when the team lead registers the developer via the UI.
+   *
+   * Only githubLogin, name, and avatarUrl are updated on conflict --
+   * manually-set fields (role, email) are never overwritten by a sync.
+   */
+  async upsertByGithubId(data: {
+    githubId: string;
+    githubLogin: string;
+    name: string;
+    avatarUrl?: string | null;
+  }): Promise<Developer> {
+    return this.prisma.developer.upsert({
+      where: { githubId: data.githubId },
+      create: {
+        githubId: data.githubId,
+        githubLogin: data.githubLogin,
+        name: data.name,
+        avatarUrl: data.avatarUrl ?? null,
+      },
+      update: {
+        githubLogin: data.githubLogin,
+        name: data.name,
+        ...(data.avatarUrl !== undefined && { avatarUrl: data.avatarUrl }),
+      },
+    });
+  }
 }

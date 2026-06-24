@@ -5,6 +5,7 @@ import type { DeveloperResponseDto } from './dto/developer-response.dto';
 import type { ListDevelopersQueryDto } from './dto/list-developers-query.dto';
 import { DevelopersRepository } from './developers.repository';
 import { DeveloperMapper } from './mapper/developer.mapper';
+import type { DeveloperDomain } from './types/developer.types';
 
 /**
  * DevelopersService contains all business logic for the Developer domain.
@@ -29,9 +30,6 @@ export class DevelopersService {
 
   /**
    * List all developers the team lead has access to, paginated.
-   *
-   * Results are ordered alphabetically by name (repository concern)
-   * and returned in a standard PaginatedResponse envelope.
    */
   async findAll(
     teamLeadId: string,
@@ -58,10 +56,8 @@ export class DevelopersService {
   /**
    * Get a single developer profile.
    *
-   * The repository queries through the TeamLeadDeveloper join table, so
-   * a null result means either "not found" or "not authorized" -- both are
-   * surfaced as 404. This is intentional: leaking whether a developer ID
-   * exists would allow team leads to probe for profiles they do not own.
+   * Returns 404 for both "not found" and "not authorized" -- leaking
+   * whether a developer ID exists would allow probing across team boundaries.
    */
   async findById(
     id: string,
@@ -81,13 +77,7 @@ export class DevelopersService {
 
   /**
    * Create or update a developer profile and link them to the team lead.
-   *
-   * Uses upsert semantics keyed on githubId so the operation is idempotent.
-   * The GitHub sync job (Phase 2) calls this method directly, not via HTTP.
-   * The HTTP endpoint (POST /developers) is for manual registration.
-   *
-   * On update, only fields present in the DTO are applied -- undefined fields
-   * are not written, so a sync cannot accidentally wipe a manually-set role.
+   * Used by POST /developers (manual registration) and the GitHub sync job.
    */
   async upsert(
     dto: CreateDeveloperDto,
@@ -110,5 +100,26 @@ export class DevelopersService {
     );
 
     return this.developerMapper.toResponse(this.developerMapper.toDomain(record));
+  }
+
+  /**
+   * Upsert a developer discovered during GitHub sync, without a teamLead context.
+   *
+   * Called by GithubService when persisting PR authors and reviewers.
+   * Creates the Developer row so PRs/reviews can reference it via FK,
+   * even before a team lead explicitly links this developer to their team.
+   *
+   * Returns DeveloperDomain (not the response DTO) so the caller gets the
+   * stable Prisma id needed for FK assignment on PullRequest.developerId
+   * and PullRequestReview.developerId.
+   */
+  async upsertFromGithub(data: {
+    githubId: string;
+    githubLogin: string;
+    name: string;
+    avatarUrl?: string | null;
+  }): Promise<DeveloperDomain> {
+    const record = await this.developersRepository.upsertByGithubId(data);
+    return this.developerMapper.toDomain(record);
   }
 }

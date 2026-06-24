@@ -10,7 +10,7 @@ import type { Request, Response } from 'express';
 
 interface ErrorResponse {
   statusCode: number;
-  message: string;
+  message: string | string[];
   path: string;
   timestamp: string;
 }
@@ -38,14 +38,25 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     if (isServerError) {
       this.logger.error(
-        `${request.method} ${request.url} — ${statusCode}`,
+        `${request.method} ${request.url} - ${statusCode}`,
         exception.stack,
       );
     }
 
+    // ValidationPipe throws with getResponse() = { message: string[], error, statusCode }.
+    // Using exception.message alone loses the per-field details, so we extract
+    // the message from the full response object when available.
+    const exceptionResponse = exception.getResponse();
+    const message =
+      typeof exceptionResponse === 'object' &&
+      exceptionResponse !== null &&
+      'message' in exceptionResponse
+        ? (exceptionResponse as { message: string | string[] }).message
+        : exception.message;
+
     const body: ErrorResponse = {
       statusCode,
-      message: exception.message,
+      message,
       path: request.url,
       timestamp: new Date().toISOString(),
     };

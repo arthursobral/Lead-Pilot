@@ -563,3 +563,29 @@ model WeeklyReportInsight {
   @@id([weeklyReportId, insightId])
   @@map("weekly_report_insights")
 }
+
+// =============================================================================
+// GITHUB SYNC
+// =============================================================================
+
+// Tracks repositories that have been registered for GitHub sync.
+//
+// fullName: "org/repo" -- the stable identifier used in all GitHub API calls.
+// githubNodeId: GitHub global node ID for the repository (from /repos endpoint).
+// lastSyncedAt: timestamp of the last successful completed sync.
+//   Used by the sync job to determine whether a re-sync is needed and to
+//   report sync status to the team lead.
+// defaultBranch: populated from GitHub on first sync. Stored for future
+//   branch-aware filtering (e.g. only PRs targeting the default branch).
+model SyncedRepository {
+  id            String    @id @default(cuid())
+  fullName      String    @unique
+  githubNodeId  String?
+  defaultBranch String    @default("main")
+  lastSyncedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("synced_repositories")
+}

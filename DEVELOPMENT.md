@@ -228,6 +228,140 @@ docker logs leadpilot-postgres                    # See Postgres logs
 
 ---
 
+## GitHub Sync — background job (BullMQ)
+
+### Como enfileirar um sync via PowerShell
+
+Com o backend rodando, use o endpoint de trigger:
+
+```powershell
+# Sync completo (todos os PRs)
+iwr -Uri "http://localhost:3001/api/github/sync" `
+    -Method POST `
+    -ContentType "application/json" `
+    -Body '{"owner":"sua-org","repo":"seu-repo"}' `
+    -UseBasicParsing
+
+# Sync incremental (apenas PRs atualizados desde uma data)
+iwr -Uri "http://localhost:3001/api/github/sync" `
+    -Method POST `
+    -ContentType "application/json" `
+    -Body '{"owner":"sua-org","repo":"seu-repo","sinceDate":"2024-01-01T00:00:00Z"}' `
+    -UseBasicParsing
+```
+
+### Como enfileirar via código (NestJS)
+
+Injete `GithubSyncQueue` em qualquer serviço do mesmo módulo ou em módulos que importam `GithubModule`:
+
+```typescript
+import { GithubSyncQueue } from '../github/github-sync.queue';
+
+// Sync completo
+await this.githubSyncQueue.enqueue({ owner: 'sua-org', repo: 'seu-repo' });
+
+// Sync incremental
+await this.githubSyncQueue.enqueue({
+  owner: 'sua-org',
+  repo: 'seu-repo',
+  sinceDate: new Date('2024-01-01').toISOString(),
+});
+
+// Deduplica -- nao adiciona se ja existe um job aguardando para o mesmo repo
+await this.githubSyncQueue.enqueueUnique({ owner: 'sua-org', repo: 'seu-repo' });
+```
+
+### Como observar os logs do job
+
+Os logs aparecem no terminal onde o backend esta rodando. Cada linha inclui o ID do job:
+
+```
+[GithubSyncProcessor] [job:42] Starting sync: sua-org/seu-repo (full sync)
+[GithubSyncProcessor] [job:42] Page 1 done -- PRs saved: 14, reviews saved: 8
+[GithubSyncProcessor] [job:42] Sync complete: sua-org/seu-repo -- 1 pages, 14 PRs, 8 reviews
+```
+
+Para ver os jobs no Redis (estado, progresso, erros):
+
+```powershell
+# Instalar Bull Board (interface visual para as filas) -- opcional
+# Ou inspecionar via Redis CLI:
+docker exec -it leadpilot-redis redis-cli
+> KEYS bull:github-sync:*       # lista todos os jobs
+> HGETALL "bull:github-sync:42" # detalhes de um job especifico
+```
+
+### O que o job faz
+
+1. Registra o repo em `synced_repositories` (ou atualiza se ja existe)
+2. Percorre todas as paginas de PRs (100 por pagina, ordenados por `updatedAt desc`)
+3. Para cada pagina: faz upsert dos PRs e authors como `Developer`
+4. Para cada PR: busca reviews e faz upsert dos reviewers como `Developer`
+5. Ao terminar: stampa `lastSyncedAt` em `synced_repositories`
+
+**Idempotente:** rodar o mesmo job duas vezes nao duplica nada -- tudo usa `upsert` keyed no `githubNodeId`.
+
+**sinceDate:** quando informado, para de paginar assim que encontra PRs mais antigos que a data. Use `lastSyncedAt` do repo para syncs incrementais.
+
+---
+
+## GitHub Sync — adicionar repos e atualizar dados
+
+### Adicionar um novo repositório
+
+Com o backend rodando, chame o endpoint de persist passando o `repo` no formato `org/repo`:
+
+```powershell
+iwr -Uri "http://localhost:3001/api/github/test/persist?repo=sua-org/seu-repo" -Method POST -UseBasicParsing
+```
+
+O que acontece internamente:
+- Registra o repo na tabela `synced_repositories`
+- Busca a **página 1** de PRs (até 30)
+- Faz upsert de cada PR e seus autores em `Developer`, `PullRequest`, `TimelineEntry`
+- Faz upsert dos reviews e seus autores
+- Stampa `lastSyncedAt` se não houver mais páginas
+
+Para adicionar mais repos, basta trocar o parâmetro `repo`. Developers que aparecem em múltiplos repos são salvos como uma única linha (chaveado por `githubId`).
+
+```powershell
+iwr -Uri "http://localhost:3001/api/github/test/persist?repo=outra-org/outro-repo" -Method POST -UseBasicParsing
+```
+
+> **Atenção:** o endpoint de persist só processa a página 1 (30 PRs). Repos com mais PRs precisam do sync job completo (BullMQ).
+
+---
+
+### Atualizar dados de um repo (puxar PRs mais recentes)
+
+Por enquanto, o endpoint de persist é **idempotente**: chamar de novo para o mesmo repo não duplica nada — faz upsert em tudo. Então para puxar dados mais recentes, basta chamar o mesmo endpoint novamente:
+
+```powershell
+iwr -Uri "http://localhost:3001/api/github/test/persist?repo=sua-org/seu-repo" -Method POST -UseBasicParsing
+```
+
+PRs e reviews já existentes são atualizados (estado, título, contagens). PRs novos são inseridos.
+
+> **Limitação atual:** o endpoint busca sempre a página 1 ordenada por `updated_at desc`, então PRs recentes aparecem primeiro. Uma sincronização incremental real (delta sync) será implementada no sync processor BullMQ.
+
+---
+
+### Verificar o que está no banco
+
+```powershell
+cd apps\backend
+npx prisma studio
+```
+
+Tabelas relevantes:
+- `synced_repositories` — repos registrados e quando foram sincronizados pela última vez
+- `Developer` — autores e revisores encontrados nos PRs
+- `PullRequest` — PRs com estado, métricas e FK para o developer autor
+- `PullRequestReview` — reviews com estado (APPROVED, CHANGES_REQUESTED, etc.)
+- `TimelineEntry` — entradas de linha do tempo geradas a partir de PRs e reviews
+
+---
+
 ## Troubleshooting
 
 **`npm run dev` reports wrong Node version (e.g. "Node.js 17.7.2")**

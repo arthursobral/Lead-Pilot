@@ -10,24 +10,24 @@ async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
 
   /**
-   * Global prefix — all routes are under /api.
+   * Global prefix - all routes are under /api.
    * Keeps the API namespace clean and predictable when fronted by a proxy.
    */
   app.setGlobalPrefix('api');
 
   /**
-   * Helmet — sets secure HTTP headers.
+   * Helmet - sets secure HTTP headers.
    * Applied before any other middleware.
    */
   app.use(helmet());
 
   /**
-   * CORS — only the frontend origin is allowed.
+   * CORS - only the frontend origin is allowed.
    * Tightened further in production via environment config.
    */
   app.enableCors({
     // WEB_URL is validated by Joi at startup (default: http://localhost:3000).
-    // Reading from process.env here is intentional — ConfigService is not
+    // Reading from process.env here is intentional - ConfigService is not
     // available before the Nest app is created, and Joi has already ensured
     // the value is a valid URI.
     origin: process.env.WEB_URL ?? 'http://localhost:3000',
@@ -37,7 +37,7 @@ async function bootstrap(): Promise<void> {
   /**
    * Global ValidationPipe.
    *
-   * whitelist: strips unknown properties from DTOs — protects against
+   * whitelist: strips unknown properties from DTOs - protects against
    *   clients sending unexpected fields that bypass validation.
    * forbidNonWhitelisted: rejects requests with unknown fields outright
    *   rather than silently stripping them.
@@ -52,18 +52,18 @@ async function bootstrap(): Promise<void> {
   );
 
   /**
-   * Global exception filter — consistent error response shape.
+   * Global exception filter - consistent error response shape.
    * Internal errors are logged but never exposed to the client.
    */
   app.useGlobalFilters(new HttpExceptionFilter());
 
   /**
-   * Global logging interceptor — logs METHOD /path — Xms for every request.
+   * Global logging interceptor - logs METHOD /path - Xms for every request.
    */
   app.useGlobalInterceptors(new LoggingInterceptor());
 
   /**
-   * Graceful shutdown — listens for SIGTERM/SIGINT so BullMQ workers
+   * Graceful shutdown - listens for SIGTERM/SIGINT so BullMQ workers
    * and Prisma connections are closed cleanly before the process exits.
    */
   app.enableShutdownHooks();

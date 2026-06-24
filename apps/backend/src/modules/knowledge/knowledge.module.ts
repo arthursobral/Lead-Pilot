@@ -14,7 +14,7 @@ import { TimelineModule } from '../timeline/timeline.module';
  * Architectural rule: InsightsModule never queries the database directly.
  * It calls KnowledgeService.buildContextPack() instead.
  *
- * This module has NO controller and NO repository — it is a pure
+ * This module has NO controller and NO repository - it is a pure
  * internal orchestration layer. Giving it an HTTP endpoint would
  * break the boundary and expose raw internal context.
  *

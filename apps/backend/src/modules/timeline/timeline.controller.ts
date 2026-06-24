@@ -5,7 +5,7 @@ import { TimelineService } from './timeline.service';
  * TimelineController
  *
  * Routes (Phase 4):
- *   GET /api/developers/:id/timeline  — paginated timeline for a developer
+ *   GET /api/developers/:id/timeline  - paginated timeline for a developer
  */
 @Controller('timeline')
 export class TimelineController {

@@ -5,7 +5,7 @@ import { MetricsService } from './metrics.service';
  * MetricsController
  *
  * Routes (Phase 3):
- *   GET /api/developers/:id/metrics  — get MetricSnapshot for a developer
+ *   GET /api/developers/:id/metrics  - get MetricSnapshot for a developer
  */
 @Controller('metrics')
 export class MetricsController {
