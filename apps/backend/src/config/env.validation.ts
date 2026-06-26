@@ -37,4 +37,9 @@ export const envValidationSchema = Joi.object({
 
   // OpenAI -- optional in Phase 1 (AI features not yet implemented)
   OPENAI_API_KEY: Joi.string().optional().allow(''),
+
+  // DAY 4 VALIDATION BYPASS -- remove in Phase 5 when auth is implemented.
+  // Provides a TeamLead ID for DevelopersController without a JWT token.
+  // Must never be set in production -- the app refuses to boot if it is.
+  DEV_TEAM_LEAD_ID: Joi.string().optional().allow(''),
 });

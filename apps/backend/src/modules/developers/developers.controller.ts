@@ -7,14 +7,45 @@ import {
   Param,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import type { AuthenticatedUser } from '../auth/types/auth.types';
 import { CreateDeveloperDto } from './dto/create-developer.dto';
 import { ListDevelopersQueryDto } from './dto/list-developers-query.dto';
 import { DevelopersService } from './developers.service';
+
+// ---------------------------------------------------------------------------
+// DAY 4 VALIDATION BYPASS -- REMOVE IN PHASE 5
+//
+// Auth is not yet implemented (Phase 5). JwtAuthGuard and @CurrentUser()
+// have been temporarily removed so Postman validation can proceed without
+// a JWT token.
+//
+// The TeamLead ID is read from DEV_TEAM_LEAD_ID in .env (gitignored).
+// The hardcoded ID never touches source control.
+//
+// The production guard below makes accidental deployment impossible:
+// if DEV_TEAM_LEAD_ID is set and NODE_ENV=production, the app refuses to boot.
+//
+// Steps to restore in Phase 5:
+//   1. Delete this entire block and the TEAM_LEAD_ID constant.
+//   2. Re-add: import { UseGuards } from '@nestjs/common';
+//   3. Re-add: import { CurrentUser } from '../../common/decorators/current-user.decorator';
+//   4. Re-add: import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+//   5. Re-add: import type { AuthenticatedUser } from '../auth/types/auth.types';
+//   6. Re-add @UseGuards(JwtAuthGuard) on the class.
+//   7. Replace TEAM_LEAD_ID with @CurrentUser() user: AuthenticatedUser everywhere.
+//
+// To seed DEV_TEAM_LEAD_ID: run `node prisma/seed.js` and add to .env:
+//   DEV_TEAM_LEAD_ID=clxyz...
+// ---------------------------------------------------------------------------
+
+if (process.env.NODE_ENV === 'production' && process.env.DEV_TEAM_LEAD_ID) {
+  throw new Error(
+    '[DevelopersController] DEV_TEAM_LEAD_ID is set in a production environment. ' +
+      'Remove the Day 4 auth bypass before deploying.',
+  );
+}
+
+const TEAM_LEAD_ID = process.env.DEV_TEAM_LEAD_ID ?? '';
 
 /**
  * DevelopersController exposes the Developer domain over HTTP.
@@ -25,15 +56,8 @@ import { DevelopersService } from './developers.service';
  *   - Return the result
  *
  * All business logic lives in DevelopersService.
- *
- * Auth note: JwtAuthGuard is wired now. It activates when JwtStrategy is
- * registered in Phase 2 (auth module). Until then, the guard is present
- * but the strategy is not configured, so unauthenticated requests will
- * reach the controller and user will be undefined. This is acceptable
- * during Phase 1 development -- no UI calls these endpoints yet.
  */
 @Controller('developers')
-@UseGuards(JwtAuthGuard)
 export class DevelopersController {
   constructor(private readonly developersService: DevelopersService) {}
 
@@ -44,11 +68,8 @@ export class DevelopersController {
    * Ordered alphabetically by name.
    */
   @Get()
-  findAll(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query() query: ListDevelopersQueryDto,
-  ) {
-    return this.developersService.findAll(user.id, query);
+  findAll(@Query() query: ListDevelopersQueryDto) {
+    return this.developersService.findAll(TEAM_LEAD_ID, query);
   }
 
   /**
@@ -59,11 +80,8 @@ export class DevelopersController {
    * requesting team lead (intentional -- avoids leaking developer ID existence).
    */
   @Get(':id')
-  findOne(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.developersService.findById(id, user.id);
+  findOne(@Param('id') id: string) {
+    return this.developersService.findById(id, TEAM_LEAD_ID);
   }
 
   /**
@@ -75,10 +93,7 @@ export class DevelopersController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  upsert(
-    @Body() dto: CreateDeveloperDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.developersService.upsert(dto, user.id);
+  upsert(@Body() dto: CreateDeveloperDto) {
+    return this.developersService.upsert(dto, TEAM_LEAD_ID);
   }
 }

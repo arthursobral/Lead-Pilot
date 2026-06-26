@@ -1,6 +1,14 @@
 # LeadPilot — Local development infrastructure
 # Runs PostgreSQL and Redis only.
 # The apps (backend, frontend) run natively via `turbo dev`.
+#
+# Credentials are read from environment variables with a local dev fallback.
+# For production or shared environments, set these in your shell or a
+# .env file before running docker compose up:
+#
+#   POSTGRES_USER=leadpilot
+#   POSTGRES_PASSWORD=<strong-password>
+#   POSTGRES_DB=leadpilot
 
 services:
   postgres:
@@ -8,9 +16,9 @@ services:
     container_name: leadpilot-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: leadpilot
-      POSTGRES_PASSWORD: leadpilot
-      POSTGRES_DB: leadpilot
+      POSTGRES_USER: ${POSTGRES_USER:-leadpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leadpilot}
+      POSTGRES_DB: ${POSTGRES_DB:-leadpilot}
     ports:
       - "5432:5432"
     volumes:

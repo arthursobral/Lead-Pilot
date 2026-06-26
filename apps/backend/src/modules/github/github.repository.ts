@@ -126,11 +126,20 @@ export class GithubRepository {
   // ---------------------------------------------------------------------------
 
   /**
-   * Upsert a PullRequest and atomically create a TimelineEntry for the author.
+   * Upsert a PullRequest and atomically upsert its TimelineEntry.
    *
-   * Uses $transaction so both writes succeed or both roll back. The
-   * TimelineEntry is only created if none already exists for this
-   * (pullRequestId, developerId) pair -- making repeated syncs safe.
+   * Uses $transaction so both writes succeed or both roll back.
+   *
+   * occurredAt strategy:
+   *   - MERGED PRs: mergedAt (when the contribution landed, not when it opened)
+   *   - All others: githubCreatedAt
+   *
+   * Re-sync behaviour:
+   *   - First sync: create the TimelineEntry.
+   *   - Subsequent syncs: update summary and occurredAt if they differ.
+   *     This handles the OPEN -> MERGED transition, where the summary changes
+   *     from "Opened PR #42: ..." to "Merged PR #42: ..." and the date shifts
+   *     from the open date to the merge date.
    *
    * state is stored as-is from NormalizedPrState ('OPEN'|'CLOSED'|'MERGED')
    * which maps directly to the PullRequestState Prisma enum values.
@@ -177,10 +186,13 @@ export class GithubRepository {
         },
       });
 
-      // Create a TimelineEntry for the PR author only on the first sync.
-      // findFirst + conditional create is safe inside the transaction.
+      // Use mergedAt for merged PRs so the timeline reflects when the
+      // contribution actually landed, not when the PR was opened.
+      const occurredAt = data.mergedAt ?? data.githubCreatedAt;
+
       const existingEntry = await tx.timelineEntry.findFirst({
         where: { pullRequestId: pr.id, developerId: data.developerId },
+        select: { id: true, summary: true, occurredAt: true },
       });
 
       if (!existingEntry) {
@@ -189,9 +201,18 @@ export class GithubRepository {
             developerId: data.developerId,
             type: 'SIGNAL',
             summary: data.timelineSummary,
-            occurredAt: data.githubCreatedAt,
+            occurredAt,
             pullRequestId: pr.id,
           },
+        });
+      } else if (
+        existingEntry.summary !== data.timelineSummary ||
+        existingEntry.occurredAt.getTime() !== occurredAt.getTime()
+      ) {
+        // Update when the PR was merged (summary and/or date changed).
+        await tx.timelineEntry.update({
+          where: { id: existingEntry.id },
+          data: { summary: data.timelineSummary, occurredAt },
         });
       }
 
