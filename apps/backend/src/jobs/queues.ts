@@ -9,6 +9,8 @@
 export const QUEUES = {
   GITHUB_SYNC: 'github-sync',
   METRICS_CALCULATION: 'metrics-calculation',
+  METRICS_SNAPSHOT: 'metrics-snapshot',
+  TEAM_METRICS_AGGREGATION: 'team-metrics-aggregation',
   AI_INSIGHTS: 'ai-insights',
   WEEKLY_REPORT: 'weekly-report',
 } as const;

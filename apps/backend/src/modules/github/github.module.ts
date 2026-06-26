@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { HttpModule } from '@nestjs/axios';
 
 import { DevelopersModule } from '../developers/developers.module';
+import { MetricsModule } from '../metrics/metrics.module';
 import { GithubController } from './github.controller';
 import { GithubService } from './github.service';
 import { GithubRepository } from './github.repository';
@@ -25,8 +26,8 @@ import { QUEUES } from '../../jobs/queues';
  * DevelopersModule is imported so GithubService can inject DevelopersRepository
  * to upsert PR authors and reviewers without a teamLead context.
  *
- * HttpModule is scoped to this module (not global) to keep the GitHub
- * client isolated. Auth headers are built per-request inside GithubApiClient.
+ * MetricsModule is imported so GithubSyncProcessor can enqueue metrics
+ * recalculation jobs for all developers touched during a sync.
  *
  * GithubSyncQueue is exported so other modules can enqueue sync jobs
  * without depending on GithubService directly.
@@ -36,6 +37,7 @@ import { QUEUES } from '../../jobs/queues';
     HttpModule,
     BullModule.registerQueue({ name: QUEUES.GITHUB_SYNC }),
     DevelopersModule,
+    MetricsModule,
   ],
   controllers: [GithubController],
   providers: [

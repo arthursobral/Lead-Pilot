@@ -3,6 +3,8 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 
 import { QUEUES } from '../../jobs/queues';
+import { MetricsCalculationQueue } from '../metrics/metrics-calculation.queue';
+import { MetricsService } from '../metrics/metrics.service';
 import { GithubService } from './github.service';
 import { GithubRepository } from './github.repository';
 import {
@@ -15,7 +17,6 @@ import {
   type GithubSyncJobPayload,
   type GithubSyncJobResult,
 } from './github-sync.job';
-import type { NormalizedPullRequest } from './github.types';
 
 /**
  * GithubSyncProcessor
@@ -28,6 +29,7 @@ import type { NormalizedPullRequest } from './github.types';
  *        a. persistPullRequests -- upsert developers + PRs + timeline entries
  *        b. For each saved PR: getReviewsForPr + persistReviews
  *   3. markSyncComplete -- stamp lastSyncedAt
+ *   4. enqueueMetricsJobs -- one metrics.calculateDeveloper job per developer
  *
  * sinceDate handling:
  *   PRs are returned sorted by updatedAt desc. Once the oldest PR on a page
@@ -51,6 +53,7 @@ export class GithubSyncProcessor extends WorkerHost {
   constructor(
     private readonly githubService: GithubService,
     private readonly githubRepository: GithubRepository,
+    private readonly metricsCalculationQueue: MetricsCalculationQueue,
   ) { super(); }
 
   async process(
@@ -91,8 +94,8 @@ export class GithubSyncProcessor extends WorkerHost {
       let hasNextPage = true;
 
       while (hasNextPage) {
-        // Rough progress: 10% setup, 10-90% pages, 100% done
-        await job.updateProgress(Math.min(10 + pagesProcessed * 5, 85));
+        // Progress: 10% setup, 10-80% pages, 90% metrics enqueue, 100% done
+        await job.updateProgress(Math.min(10 + pagesProcessed * 5, 80));
 
         this.logger.debug(
           `[job:${job.id}] Fetching ${repositoryFullName} page=${page}`,
@@ -162,6 +165,12 @@ export class GithubSyncProcessor extends WorkerHost {
       // Step 3: stamp lastSyncedAt
       // ------------------------------------------------------------------
       await this.githubService.markSyncComplete(repositoryFullName);
+
+      // ------------------------------------------------------------------
+      // Step 4: enqueue metrics recalculation for all touched developers
+      // ------------------------------------------------------------------
+      await job.updateProgress(90);
+      await this.enqueueMetricsJobs(job.id as string, repositoryFullName);
       await job.updateProgress(100);
 
       const result: GithubSyncJobResult = {
@@ -231,6 +240,43 @@ export class GithubSyncProcessor extends WorkerHost {
     const rows =
       await this.githubRepository.findManyByGithubNodeIds(githubNodeIds);
     return new Map(rows.map((row) => [row.githubNodeId, row.id]));
+  }
+
+  /**
+   * After a successful sync, enqueue one metrics.calculateDeveloper job per
+   * developer who has PRs in this repository.
+   *
+   * Uses the standard 30-day window. MetricsCalculationQueue deduplicates:
+   * if a job for the same developer and period is already queued, it is
+   * silently dropped.
+   */
+  private async enqueueMetricsJobs(
+    syncJobId: string,
+    repositoryFullName: string,
+  ): Promise<void> {
+    const developerIds =
+      await this.githubRepository.findDeveloperIdsByRepo(repositoryFullName);
+
+    if (developerIds.length === 0) {
+      this.logger.debug(
+        `[job:${syncJobId}] No developers in ${repositoryFullName} -- skipping metrics enqueue`,
+      );
+      return;
+    }
+
+    const { periodStart, periodEnd } = MetricsService.defaultPeriod();
+
+    for (const developerId of developerIds) {
+      await this.metricsCalculationQueue.enqueueForDeveloper({
+        developerId,
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+      });
+    }
+
+    this.logger.log(
+      `[job:${syncJobId}] Enqueued metrics jobs for ${developerIds.length} developer(s) in ${repositoryFullName}`,
+    );
   }
 
   private emptyResult(repositoryFullName: string): GithubSyncJobResult {

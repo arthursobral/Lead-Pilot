@@ -283,4 +283,25 @@ export class GithubRepository {
       return review;
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Developer lookup (used to trigger metrics jobs after sync)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Return distinct Prisma developer IDs for all authors who have at least
+   * one PR in the given repository.
+   *
+   * Called by GithubSyncProcessor after a sync completes to determine which
+   * developers need a metrics recalculation. One batch query instead of
+   * collecting IDs inline during the sync loop.
+   */
+  async findDeveloperIdsByRepo(repositoryFullName: string): Promise<string[]> {
+    const rows = await this.prisma.pullRequest.findMany({
+      where: { repositoryFullName },
+      select: { developerId: true },
+      distinct: ['developerId'],
+    });
+    return rows.map((r) => r.developerId);
+  }
 }

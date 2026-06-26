@@ -22,6 +22,7 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { ObservationsModule } from './modules/observations/observations.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { TeamMetricsModule } from './modules/team-metrics/team-metrics.module';
 import { TimelineModule } from './modules/timeline/timeline.module';
 import { HealthModule } from './modules/health/health.module';
 
@@ -75,11 +76,12 @@ import { HealthModule } from './modules/health/health.module';
     DevelopersModule,
     GithubModule,
     MetricsModule,
+    TeamMetricsModule,   // depends on: Metrics (reads MetricSnapshot via own repository)
     ObservationsModule,
     TimelineModule,
-    KnowledgeModule,   // depends on: Developers, Metrics, Observations, Timeline
-    InsightsModule,    // depends on: Knowledge
-    ReportsModule,     // depends on: Knowledge
+    KnowledgeModule,     // depends on: Developers, Metrics, Observations, Timeline
+    InsightsModule,      // depends on: Knowledge
+    ReportsModule,       // depends on: Knowledge
 
     // Infrastructure endpoints -- no auth, no domain dependencies.
     HealthModule,

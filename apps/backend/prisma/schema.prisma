@@ -105,9 +105,10 @@ model TeamLead {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  developers    TeamLeadDeveloper[]
-  observations  Observation[]
-  weeklyReports WeeklyReport[]
+  developers          TeamLeadDeveloper[]
+  observations        Observation[]
+  weeklyReports       WeeklyReport[]
+  teamMetricSnapshots TeamMetricSnapshot[]
 
   @@map("team_leads")
 }
@@ -286,6 +287,10 @@ model MetricSnapshot {
   // Which repos the developer was active in this period
   activeRepositories String[]
 
+  // Merged PR count per repository -- { "payments-service": 4, "api-gateway": 1 }
+  // Sorted descending by count when written; empty object when no merged PRs.
+  repoFocus          Json     @default("{}")
+
   createdAt DateTime @default(now())
 
   developer Developer @relation(fields: [developerId], references: [id])
@@ -294,6 +299,56 @@ model MetricSnapshot {
   @@index([developerId])
   @@index([periodStart])
   @@map("metric_snapshots")
+}
+
+// =============================================================================
+// TEAM METRICS -- Aggregated Snapshots
+// =============================================================================
+
+// Aggregated metrics for all developers under a given TeamLead for a period.
+//
+// Keyed on (teamLeadId, periodStart, periodEnd) -- same idempotency contract
+// as MetricSnapshot. Re-running the aggregation job upserts the existing row.
+//
+// averageMergeTimeHours: weighted average across developers (weighted by
+//   pullRequestsMerged). null when no developer had merged PRs in the period.
+//
+// repoFocus: summed merged-PR counts per repository across all developers.
+//   Sorted descending by count. Same extensible Json shape as MetricSnapshot.
+//
+// developerCount: number of developers whose MetricSnapshots were included.
+//   A developer is included when their snapshot exists for the exact period.
+model TeamMetricSnapshot {
+  id          String   @id @default(cuid())
+  teamLeadId  String
+  periodStart DateTime
+  periodEnd   DateTime
+
+  // Headcount
+  developerCount Int @default(0)
+
+  // Pull request activity (sums across all included developers)
+  totalPrsOpened        Int    @default(0)
+  totalPrsMerged        Int    @default(0)
+  totalPrsClosed        Int    @default(0)
+  averageMergeTimeHours Float? // Weighted avg; null if no merged PRs
+
+  // Review activity
+  totalReviewsGiven    Int @default(0)
+  totalReviewsReceived Int @default(0)
+
+  // Repository activity
+  activeRepositories String[]
+  repoFocus          Json     @default("{}")
+
+  createdAt DateTime @default(now())
+
+  teamLead TeamLead @relation(fields: [teamLeadId], references: [id])
+
+  @@unique([teamLeadId, periodStart, periodEnd])
+  @@index([teamLeadId])
+  @@index([periodStart])
+  @@map("team_metric_snapshots")
 }
 
 // =============================================================================
