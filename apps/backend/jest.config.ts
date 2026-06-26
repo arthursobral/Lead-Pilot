@@ -10,6 +10,9 @@ const config: Config = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
+  moduleNameMapper: {
+    '^@prisma/client$': '<rootDir>/__mocks__/prisma-client.ts',
+  },
 };
 
 export default config;

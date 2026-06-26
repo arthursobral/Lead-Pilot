@@ -1,0 +1,26 @@
+import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ObservationSeverity, ObservationType } from '@prisma/client';
+
+export class ListObservationsQueryDto {
+  @IsOptional()
+  @IsEnum(ObservationType)
+  type?: ObservationType;
+
+  @IsOptional()
+  @IsEnum(ObservationSeverity)
+  severity?: ObservationSeverity;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number = 20;
+}
