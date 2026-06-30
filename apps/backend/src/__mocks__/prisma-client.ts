@@ -12,6 +12,8 @@
  *
  * All repositories and PrismaService are mocked in unit tests anyway,
  * so no real Prisma functionality is needed at test time.
+ *
+ * Keep in sync with schema.prisma when new enums are added.
  */
 
 export class PrismaClient {
@@ -22,8 +24,10 @@ export class PrismaClient {
   $use = jest.fn();
 }
 
-// Enums -- string unions used as values in service/dto code.
-// Keep in sync with schema.prisma when new enums are added.
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
 export const PullRequestState = {
   OPEN: 'OPEN',
   CLOSED: 'CLOSED',
@@ -76,10 +80,27 @@ export const InsightType = {
   LEADERSHIP_SIGNAL: 'LEADERSHIP_SIGNAL',
 } as const;
 
+// Legacy name -- superseded by FactConfidence below.
 export const ConfidenceLevel = {
   LOW: 'LOW',
   MEDIUM: 'MEDIUM',
   HIGH: 'HIGH',
+} as const;
+
+export const FactConfidence = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+} as const;
+
+// Added by Day 5 migration (add_fact_type_and_dedup_key).
+export const FactType = {
+  ACTIVITY_SIGNAL: 'ACTIVITY_SIGNAL',
+  COLLABORATION_SIGNAL: 'COLLABORATION_SIGNAL',
+  METRIC_PATTERN: 'METRIC_PATTERN',
+  OBSERVATION_FACT: 'OBSERVATION_FACT',
+  ACHIEVEMENT: 'ACHIEVEMENT',
+  COACHING_SIGNAL: 'COACHING_SIGNAL',
 } as const;
 
 export const Prisma = {

@@ -15,6 +15,6 @@ import { ObservationsRepository } from './observations.repository';
 @Module({
   controllers: [ObservationsController],
   providers: [ObservationsService, ObservationsRepository],
-  exports: [ObservationsService],
+  exports: [ObservationsService, ObservationsRepository],
 })
 export class ObservationsModule {}

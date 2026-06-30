@@ -1,29 +1,32 @@
 import { Module } from '@nestjs/common';
 import { KnowledgeService } from './knowledge.service';
+import { KnowledgeController } from './knowledge.controller';
+import { ContextBuilderService } from './context-builder.service';
 import { DevelopersModule } from '../developers/developers.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { ObservationsModule } from '../observations/observations.module';
 import { TimelineModule } from '../timeline/timeline.module';
+import { FactsModule } from '../facts/facts.module';
 
 /**
- * KnowledgeModule is the AI firewall.
+ * KnowledgeModule -- the AI firewall (context-pack assembly layer).
  *
- * It aggregates data from multiple domain modules and builds a
- * structured Context Pack before anything is sent to the AI layer.
+ * Orchestrates data collection across domain modules and assembles ContextPacks
+ * for the AI layer (Day 6). No LLM calls happen here.
  *
- * Architectural rule: InsightsModule never queries the database directly.
- * It calls KnowledgeService.buildContextPack() instead.
+ * Architecture (ADR-004):
+ *   - KnowledgeService fetches all domain data for a period.
+ *   - ContextBuilderService assembles the structured ContextPack (pure, no Prisma).
+ *   - Fact generation lives in FactsModule; facts are read via FactsService.
+ *   - Timeline entries are read via TimelineRepository (exported from TimelineModule).
  *
- * This module has NO controller and NO repository - it is a pure
- * internal orchestration layer. Giving it an HTTP endpoint would
- * break the boundary and expose raw internal context.
- *
- * KnowledgeService is exported so InsightsModule and ReportsModule
- * can use it when generating AI output.
+ * Exports:
+ *   KnowledgeService -- used by InsightsModule and ReportsModule (Day 6+)
  */
 @Module({
-  imports: [DevelopersModule, MetricsModule, ObservationsModule, TimelineModule],
-  providers: [KnowledgeService],
+  imports: [DevelopersModule, MetricsModule, ObservationsModule, TimelineModule, FactsModule],
+  controllers: [KnowledgeController],
+  providers: [KnowledgeService, ContextBuilderService],
   exports: [KnowledgeService],
 })
 export class KnowledgeModule {}

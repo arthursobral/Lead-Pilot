@@ -151,7 +151,7 @@ export class ObservationsRepository {
     developerId: string,
     options: ListObservationsOptions,
   ): Promise<PaginatedResult<Observation>> {
-    const { type, severity, page, limit } = options;
+    const { type, severity, from, to, page, limit } = options;
     const skip = (page - 1) * limit;
 
     const where = {
@@ -159,6 +159,12 @@ export class ObservationsRepository {
       deletedAt: null,
       ...(type !== undefined && { type }),
       ...(severity !== undefined && { severity }),
+      ...((from !== undefined || to !== undefined) && {
+        occurredAt: {
+          ...(from !== undefined && { gte: from }),
+          ...(to !== undefined && { lt: to }),
+        },
+      }),
     };
 
     const [data, total] = await Promise.all([
@@ -172,6 +178,27 @@ export class ObservationsRepository {
     ]);
 
     return { data, total, page, limit };
+  }
+
+  /**
+   * Return all non-deleted observations for a developer within a period.
+   * Used internally by KnowledgeService -- no pagination, returns everything.
+   *
+   * Period convention: from inclusive (>=), to exclusive (<).
+   */
+  async findAllByDeveloperAndPeriod(
+    developerId: string,
+    from: Date,
+    to: Date,
+  ): Promise<import('@prisma/client').Observation[]> {
+    return this.prisma.observation.findMany({
+      where: {
+        developerId,
+        deletedAt: null,
+        occurredAt: { gte: from, lt: to },
+      },
+      orderBy: { occurredAt: 'asc' },
+    });
   }
 
   /**

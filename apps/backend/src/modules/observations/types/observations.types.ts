@@ -44,6 +44,10 @@ export interface CreateTimelineEntryForObservation {
 export interface ListObservationsOptions {
   type?: ObservationType;
   severity?: ObservationSeverity;
+  /** Inclusive lower bound on occurredAt (used by Knowledge Engine for period queries) */
+  from?: Date;
+  /** Exclusive upper bound on occurredAt */
+  to?: Date;
   page: number;
   limit: number;
 }

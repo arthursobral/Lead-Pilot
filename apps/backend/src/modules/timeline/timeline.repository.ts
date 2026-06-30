@@ -194,6 +194,33 @@ export class TimelineRepository {
   }
 
   // --------------------------------------------------------------------------
+  // Period read (Knowledge Engine)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Return all timeline entries for a developer within a specific period.
+   * Not paginated -- intended for the Knowledge Engine context builder.
+   *
+   * Ordered by occurredAt ASC (chronological) so the AI layer receives
+   * the developer's story in forward order.
+   */
+  async findByDeveloperAndPeriod(
+    developerId: string,
+    from: Date,
+    to: Date,
+  ): Promise<TimelineEntryWithSource[]> {
+    const data = await this.prisma.timelineEntry.findMany({
+      where: {
+        developerId,
+        occurredAt: { gte: from, lte: to },
+      },
+      include: TIMELINE_INCLUDE,
+      orderBy: { occurredAt: 'asc' },
+    });
+    return data as unknown as TimelineEntryWithSource[];
+  }
+
+  // --------------------------------------------------------------------------
   // Write (public hook for external modules)
   // --------------------------------------------------------------------------
 
@@ -314,8 +341,7 @@ export class TimelineRepository {
           },
         });
         entriesCreated++;
-      }
-
+      }
       // Step 4: Re-insert OBSERVATION / ACHIEVEMENT entries.
       const observations = await tx.observation.findMany({
         where: { developerId, deletedAt: null },

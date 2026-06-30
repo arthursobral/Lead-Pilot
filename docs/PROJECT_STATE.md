@@ -18,17 +18,12 @@ The goal is to keep both human contributors and AI agents synchronized on the pr
 
 ## Current Phase
 
-Day 5 — Knowledge Engine
+Day 7 -- Reports
 
 Current Focus
 
-Transform the Timeline + Metrics + Observations into structured context packs
-for AI consumption. No direct LLM interaction yet.
-
-Current Goal
-
-Implement the Knowledge Engine: aggregate developer context (signals, metrics,
-observations) into structured Facts that will feed the AI layer in Day 6.
+Day 6 AI Engine is complete. Next milestone: Weekly Reports and Developer/Team
+Summary dashboards. The Insight + TalkingPoint pipeline is operational and tested.
 
 ---
 
@@ -38,7 +33,7 @@ observations) into structured Facts that will feed the AI layer in Day 6.
 
 Status
 
-✅ Completed
+Completed
 
 Deliverables
 
@@ -59,7 +54,7 @@ Deliverables
 
 Status
 
-✅ Completed
+Completed
 
 Deliverables
 
@@ -77,7 +72,7 @@ Deliverables
 
 Status
 
-✅ Completed
+Completed
 
 Deliverables
 
@@ -95,19 +90,149 @@ Deliverables
 
 Status
 
-✅ Completed
+Completed
 
 Deliverables
 
-* Observation module — CRUD, soft-delete, pagination, filtering (by type, severity, date range)
-* Observation → TimelineEntry atomic write (Prisma $transaction)
-* TimelineRepository — paginated reads with full TIMELINE_INCLUDE shape
-* TimelineService — returns PaginatedTimelineResponseDto via mapper
-* TimelineController — GET /developers/:id/timeline, POST /developers/:id/timeline/rebuild
-* TimelineBuilderService — pure composition service, no DB access, deterministic
-* Timeline mapper — source derivation from FK columns, Date → ISO string serialization
+* Observation module -- CRUD, soft-delete, pagination, filtering (by type, severity, date range)
+* Observation -> TimelineEntry atomic write (Prisma $transaction)
+* TimelineRepository -- paginated reads with full TIMELINE_INCLUDE shape
+* TimelineService -- returns PaginatedTimelineResponseDto via mapper
+* TimelineController -- GET /developers/:developerId/timeline, POST /developers/:developerId/timeline/rebuild
+* TimelineBuilderService -- pure composition service, no DB access, deterministic
+* Timeline mapper -- source derivation from FK columns, Date -> ISO string serialization
 * Filtering: type, source (entity origin), from/to date range
 * 225 tests passing, 0 failures
+
+---
+
+## Day 5
+
+Status
+
+Completed
+
+Deliverables
+
+* Prisma migration: FactType enum + updated Fact model
+  -- Added: type, dedupKey (unique), updatedAt, evidence (renamed from sources)
+  -- Removed: observationId FK (replaced by evidence Json)
+  -- Made required: periodStart, periodEnd
+  -- New indexes: (developerId, periodStart, periodEnd), (type)
+* KnowledgeRepository: upsertFact (dedupKey idempotency), findByDeveloper, findByDeveloperAndPeriod
+* KnowledgeService: generateFacts, getFacts, buildContextPack
+* KnowledgeController: 3 endpoints (see API section below)
+* ContextPack: dynamic, never persisted -- assembled per request
+* Fact extraction rules: 6 rules documented in ADR-006
+* ObservationsRepository: added from/to date range filter + findAllByDeveloperAndPeriod
+* 249 tests passing, 0 failures
+
+API Endpoints (Day 5)
+
+* POST /api/developers/:developerId/facts/generate?periodStart=&periodEnd=
+* GET  /api/developers/:developerId/facts?type=&page=&limit=
+* GET  /api/developers/:developerId/context-pack?periodStart=&periodEnd=
+
+---
+
+## Day 6 -- Context Builder + Expanded Facts + Day 5 Integration
+
+Status
+
+Complete (reviewed and validated 2026-06-29)
+
+Deliverables
+
+* FactsModule: standalone domain module extracted from KnowledgeModule
+  -- FactsRepository (upsertFact, findByDeveloper, findByDeveloperAndPeriod)
+  -- FactsService (generate, list, findByPeriod)
+  -- FactsController (POST generate, GET list)
+* FactsService expanded to 14 deterministic extraction rules (ADR-006 v2):
+  -- MetricSnapshot: 7 rules (merged PRs, opened PRs, reviews given/received,
+     avg PR size, avg merge time, repository focus)
+  -- Observations per-record: 3 rules (ACHIEVEMENT, COACHING_SIGNAL, OBSERVATION_FACT)
+  -- Observations aggregate: 2 rules (count by type when >= 2, high-severity count)
+  -- Timeline: 2 rules (total entry count, most recent notable event)
+  -- 48 tests covering every rule and edge case
+* FactsModule now imports TimelineModule; FactsService injects TimelineRepository
+* KnowledgeModule refactored: delegates fact logic to FactsModule, context-pack only
+* ContextBuilderService: pure assembly service (no Prisma), produces ContextPack
+  -- 20 tests, no mocks required (incl. TIMELINE_ENTRY evidence resolution)
+* ContextPack enriched (ADR-007):
+  -- timeline: ContextPackTimelineEntry[] -- chronological developer history
+  -- evidenceMap: EvidenceMap -- sourceId -> evidence summary for AI traceability
+  -- evidenceMap resolves METRIC_SNAPSHOT, OBSERVATION, and TIMELINE_ENTRY sources
+* TimelineRepository: added findByDeveloperAndPeriod() + exported from TimelineModule
+* KnowledgeService: parallel-fetches all 4 data sources, delegates assembly to ContextBuilderService
+* dedupKey format updated to v2: {devId}:{type}:{rule}:{sourceId}:{date}
+  -- v1 facts in existing DBs will not be auto-upserted; one-time migration needed
+* Day 5 integration validated manually (Postman) and via automated tests:
+  -- All facts are evidence-backed (0 unresolved evidence entries)
+  -- ContextPack is stable and JSON-serializable (round-trip validated)
+  -- No OpenAI calls, no AI Insights, no Reports implemented
+* 298 tests passing, 0 failures
+
+API Endpoints (Day 5/6)
+
+* POST /api/developers/:developerId/facts/generate  (body: { periodStart, periodEnd })
+* GET  /api/developers/:developerId/facts?type=&page=&limit=
+* GET  /api/developers/:developerId/knowledge/context?periodStart=&periodEnd=
+* GET  /api/developers/:developerId/context-pack?periodStart=&periodEnd=  (legacy alias)
+
+---
+
+## Day 6 -- AI Engine (Local Intelligence Layer)
+
+Status
+
+Complete (implemented and validated 2026-06-29)
+
+Deliverables
+
+* Prisma schema: Insight model + TalkingPoint model + FactInsight join table
+  -- InsightType enum: 8 values (POSITIVE_SIGNAL, COACHING_OPPORTUNITY, RISK,
+     GROWTH_PATTERN, RECOGNITION, WORKLOAD_SIGNAL, COMMUNICATION_SIGNAL, LEADERSHIP_SIGNAL)
+  -- FactInsight: many-to-many Fact <-> Insight, only valid factIds persisted
+* AiModule (new): encapsulates all LLM infrastructure (ADR-008)
+  -- OllamaProvider: HTTP client for Ollama, AbortController timeout, structured logging
+  -- PromptBuilderService: pure service, converts ContextPack to system + user prompts
+  -- InsightParserService: pure service, validates LLM JSON output, warns on prohibited language
+* InsightsModule (new):
+  -- InsightsRepository: createInsightsWithTalkingPoints ($transaction atomic write),
+     findByDeveloper (paginated, ordered by periodStart DESC)
+  -- InsightsService: 8-step orchestration (facts -> context pack -> prompts ->
+     Ollama -> parse -> factId validation -> persist -> map to DTOs)
+  -- InsightsController: POST generate, GET list (DEV_TEAM_LEAD_ID bypass)
+* factId validation (ADR-008 rules 3 and 4):
+  -- validFactIds persisted; unknownFactIds logged and discarded per insight
+  -- Insight with 0 valid factIds discarded; generation fails only if ALL discarded
+* env.validation.ts: OLLAMA_BASE_URL, OLLAMA_MODEL (default: qwen2.5-coder:7b),
+  OLLAMA_TIMEOUT_MS (default: 60000)
+* 47 new tests: ollama.provider (8), prompt-builder (10), insight-parser (22),
+  insights.service (13)
+* ILlmProvider interface + LLM_PROVIDER injection token (provider abstraction layer):
+  -- llm-provider.interface.ts, llm.types.ts (generic LlmMessage, LlmRole types)
+  -- OllamaProvider implements ILlmProvider
+  -- AiModule registers OllamaProvider behind LLM_PROVIDER token
+  -- InsightsService injects ILlmProvider via @Inject(LLM_PROVIDER), not OllamaProvider
+* AI safety review completed (2026-06-30):
+  -- PROHIBITED_PHRASES synced with system prompt NEVER list (12 phrases each)
+  -- InsightParserService scans both summary AND talkingPoints for prohibited language
+  -- 'should be removed' added to PROHIBITED_PHRASES
+  -- 'better than others' / 'worse than others' shortened to 'better than' / 'worse than'
+  -- Parser sync-guard test verifies both enforcement layers stay in sync
+* 351 tests passing, 0 failures
+
+API Endpoints (Day 6 AI)
+
+* POST /api/developers/:developerId/insights/generate  (body: { periodStart, periodEnd })
+* GET  /api/developers/:developerId/insights?periodStart=&periodEnd=&type=&page=&limit=
+
+Prerequisites (local dev)
+
+* `brew install ollama` (macOS) or equivalent
+* `ollama pull qwen2.5-coder:7b`  (~4 GB)
+* OLLAMA_BASE_URL=http://localhost:11434 in apps/backend/.env  (default)
 
 ---
 
@@ -115,61 +240,23 @@ Deliverables
 
 ## Sprint Goal
 
-Build the Knowledge Engine.
+Build the Reports layer (Day 7).
 
 Modules:
 
-* Facts
-* Knowledge Context
-* Context Packs
+* WeeklyReport generation
+* Developer summary endpoint
+* Team summary endpoint
 
 ---
 
 ## In Progress
 
-Knowledge Engine
-
-Status
-
-⬜ Not Started
-
-Tasks
-
-* Define Fact domain model
-* Implement FactRepository
-* Implement KnowledgeService (aggregate Timeline + Metrics + Observations → Facts)
-* Context Pack generation
-* API endpoints
+Nothing in progress. Day 6 AI Engine is complete and validated.
 
 ---
 
 # Upcoming Milestones
-
-## Day 5
-
-Knowledge Engine
-
-Purpose
-
-Transform Timeline + Metrics + Observations into structured context packs for AI.
-
-No direct LLM interaction yet.
-
----
-
-## Day 6
-
-AI Engine
-
-Deliverables
-
-* Context Packs
-* Prompt Builder
-* Insight Generation
-* Talking Points
-* Risk Detection
-
----
 
 ## Day 7
 
@@ -177,11 +264,7 @@ Reports
 
 Dashboard Polish
 
-Weekly Reports
-
-Developer Summary
-
-Team Summary
+Weekly Reports (developer summary, team summary)
 
 ---
 
@@ -189,41 +272,42 @@ Team Summary
 
 ```text
 GitHub
-        ↓
+        |
+        v
 
-Pull Requests
-        ↓
+Pull Requests / Reviews
+        |
+        v
 
-Reviews
-        ↓
+Metrics Engine -> MetricSnapshots
+        +
+Observations -> TimelineEntries
+        |
+        v
 
-Metrics Engine
-        ↓
-
-Metric Snapshots
+Timeline (read-view)
 
         +
 
-Observations
-        ↓
+Knowledge Engine (Day 5 -- complete)
+        |
+        v
 
-Timeline
+Facts (stored, idempotent)
 
-        ↓
+        +
 
-Knowledge Engine (Not Started)
+Context Packs (dynamic, per-request)
 
-        ↓
+        |
+        v
 
-Facts (Not Started)
+AI Insights (Day 6 -- complete)
 
-        ↓
+        |
+        v
 
-AI Insights (Not Started)
-
-        ↓
-
-Reports (Not Started)
+Reports (Day 7 -- next)
 ```
 
 ---
@@ -232,49 +316,69 @@ Reports (Not Started)
 
 Implemented
 
-✅ Developer
+* Developer
+* Pull Request
+* Pull Request Review
+* Metric Snapshot
+* Observation
+* Timeline Entry
+* Fact (Day 5)
 
-✅ Pull Request
+Implemented (Day 6)
 
-✅ Pull Request Review
-
-✅ Metric Snapshot
-
-In Progress
-
-✅ Observation
-
-✅ Timeline Entry
+* Insight
+* TalkingPoint
+* FactInsight (join table)
 
 Not Started
 
-⬜ Fact
-
-⬜ Knowledge Context
-
-⬜ Insight
-
-⬜ Talking Point
-
-⬜ Weekly Report
+* Weekly Report
 
 ---
 
 # Known Technical Debt
 
-Current Technical Debt
-
-* Timeline rebuild uses N individual `create` calls instead of `createMany` -- acceptable for admin path, optimize in Phase 5 if needed.
+* Timeline rebuild uses N individual `create` calls instead of `createMany` -- acceptable for admin path.
 * Timeline rebuild endpoint is synchronous -- Phase 5: move to BullMQ job for large histories.
 * GitHub sync currently supports GitHub only.
-* Authentication is minimal -- Phase 5: add JwtAuthGuard to Timeline and Observation endpoints.
-* Knowledge Engine not implemented yet.
+* Authentication is minimal -- Phase 5: add JwtAuthGuard to all endpoints.
+* DEV_TEAM_LEAD_ID bypass in DevelopersController, KnowledgeController, FactsController,
+  and InsightsController -- remove in Phase 5 when auth is implemented.
+* FactsRepository `(this.prisma.fact as any)` casts -- remove after `npx prisma generate`.
+* FactType defined locally in facts.types.ts -- after prisma generate, import from @prisma/client.
+* dedupKey v1 -> v2 migration: facts generated before Day 6 used the old format; re-running
+  generate-facts will INSERT new rows instead of upserting existing ones. Apply a one-time
+  data migration if the DB has pre-existing facts (new installations are unaffected).
+* KnowledgeService injects 6 dependencies -- if ContextPack grows further, extract
+  a ContextDataFetcher service.
+* InsightsService.generate() is synchronous HTTP -- Phase 5: move to BullMQ job so the
+  endpoint returns a job ID and the client polls for results.
+* OllamaProvider has no retry -- Phase 5: add exponential backoff (max 3 attempts)
+  for transient network errors.
+* InsightParseException not caught in InsightsService -- when the LLM returns malformed
+  JSON, the client receives HTTP 500 instead of a meaningful 422. Fix: catch
+  InsightParseException in generate() and rethrow as UnprocessableEntityException.
+* No Insight deduplication -- calling generate() twice for the same period inserts
+  duplicate Insight rows. Unlike Facts (dedupKey), Insights have no idempotency guard.
+* ContextPack prompt has no size bound -- full JSON.stringify(pack) is sent to the LLM
+  without truncation. Risk for long-tenured developers or models with small context windows.
+* previousInsights missing from ContextPack -- ADR-007 noted this as a Day 6 addition.
+  Without it, generate() may produce duplicate insights across calls in the same period.
+* list() uses buildContextPack() for developer existence check (4 DB queries instead of 1).
+  A lightweight findDeveloperById call would be more efficient.
+* InsightsModule comment still references OllamaProvider instead of ILlmProvider.
+* InsightParserService does not enforce minimum 1 talkingPoint per insight (prompt says 1-3).
+* No insights.mapper.ts -- DTO mapping is in private functions in insights.service.ts,
+  inconsistent with the Observations/Timeline mapper convention.
 
 Priority
 
-Low
-
-No blocking technical debt exists before Day 5.
+High (InsightParseException → 422): user-facing correctness issue; fix before Day 7 frontend.
+High (prisma generate): eliminates runtime `as any` casts.
+Medium (InsightsService BullMQ): generation can take 30-60s; synchronous is fragile.
+Medium (Insight deduplication): production correctness concern.
+Medium (ContextPack size bound): production resilience concern.
+Low (all others): no blocking technical debt for Day 7.
 
 ---
 
@@ -306,48 +410,34 @@ Unless explicitly requested.
 
 # Current AI Responsibilities
 
-The AI is currently used only as a software engineering assistant.
+The AI Engine begins on Day 6.
 
-LeadPilot itself does **not** generate AI insights yet.
+Day 5 established the Knowledge Engine -- the AI firewall.
 
-The AI module begins on Day 6.
+The AI layer (InsightsModule) will:
+1. Call KnowledgeService.buildContextPack() to get the context window.
+2. Pass the context pack to OpenAI.
+3. Persist Insights and TalkingPoints.
 
-Before Day 6:
-
-Do not create:
-
-* Insight generation
-* Prompt Builder
-* Knowledge Engine
-* Facts
-* Talking Points
-
-Unless explicitly requested.
-
----
-
-# Definition of Ready
-
-The project is considered ready for Day 5 when:
-
-* Observation CRUD is complete.
-* Timeline API is complete.
-* Timeline Builder exists.
-* Timeline pagination works.
-* Timeline filtering works.
-* Signal timeline entries are generated automatically.
-* Observation timeline entries are generated transactionally.
-* Tests pass.
-* Backend builds successfully.
-* Frontend can consume timeline endpoints.
+Before calling OpenAI, always call generateFacts() first to ensure the Facts
+in the context pack are current.
 
 ---
 
 # Active Architectural Decisions
 
-Reference:
+Reference: docs/ARCHITECT_DECISIONS.md
 
-docs/ARCHITECT_DECISIONS.md
+Current ADRs:
+
+* ADR-001: Monorepo structure
+* ADR-002: NestJS modular monolith
+* ADR-003: Prisma + PostgreSQL
+* ADR-004: Knowledge Engine is the AI firewall
+* ADR-005: No productivity scores or ranking
+* ADR-006: Fact extraction rules (v2 -- 14 rules, Day 6)
+* ADR-007: ContextPack enrichment (timeline + evidenceMap)
+* ADR-008: Local LLM via Ollama + qwen2.5-coder:7b (Day 6)
 
 Before making architectural changes:
 
@@ -410,14 +500,27 @@ docs/ARCHITECT_DECISIONS.md
 
 # Next Goal
 
-Begin Day 5 — Knowledge Engine.
+Begin Day 7 -- Reports.
 
-Implement:
+Day 6 (AI Engine) is complete: 351 tests passing, 0 failures.
 
-* Fact domain model and Prisma schema
-* FactRepository
-* KnowledgeService (aggregate Timeline + Metrics + Observations into Facts)
-* Context Pack generation
-* API: GET /developers/:id/facts, GET /developers/:id/context-pack
+Day 7 should implement:
 
-Day 4 is complete. All 194 tests pass. The Timeline is ready to feed the Knowledge Engine.
+* WeeklyReport model (Prisma schema migration)
+* WeeklyReportService: aggregate Insights + Metrics + Observations for a period
+* WeeklyReportController: POST generate, GET list
+* Developer summary: structured summary of a developer's period
+* Team summary: aggregate view across all developers on a team
+
+Pre-conditions for Day 7:
+
+1. Run `npx prisma migrate dev --name add-weekly-report` after updating schema.
+2. Read ADR-004 (Knowledge Engine firewall) -- reports consume Insights, not raw LLM.
+3. Read ADR-005 (no productivity scores) -- summaries must use hedged language.
+4. Verify `npx jest` still passes before starting.
+
+Local dev pre-conditions (for testing AI endpoints):
+
+* `ollama serve` must be running
+* `ollama pull qwen2.5-coder:7b` must have been executed (~4 GB download)
+* OLLAMA_BASE_URL=http://localhost:11434 in apps/backend/.env
