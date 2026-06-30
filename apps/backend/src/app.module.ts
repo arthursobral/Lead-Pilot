@@ -18,6 +18,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { DevelopersModule } from './modules/developers/developers.module';
 import { GithubModule } from './modules/github/github.module';
 import { InsightsModule } from './modules/insights/insights.module';
+import { FactsModule } from './modules/facts/facts.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { ObservationsModule } from './modules/observations/observations.module';
@@ -79,11 +80,10 @@ import { HealthModule } from './modules/health/health.module';
     TeamMetricsModule,   // depends on: Metrics (reads MetricSnapshot via own repository)
     ObservationsModule,
     TimelineModule,
-    KnowledgeModule,     // depends on: Developers, Metrics, Observations, Timeline
+    FactsModule,         // depends on: Developers, Metrics, Observations
+    KnowledgeModule,     // depends on: Developers, Metrics, Observations, Facts
     InsightsModule,      // depends on: Knowledge
-    ReportsModule,       // depends on: Knowledge
-
-    // Infrastructure endpoints -- no auth, no domain dependencies.
+    ReportsModule,
     HealthModule,
   ],
 })

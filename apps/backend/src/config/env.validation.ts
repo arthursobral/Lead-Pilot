@@ -35,8 +35,16 @@ export const envValidationSchema = Joi.object({
   GITHUB_CLIENT_SECRET: Joi.string().optional().allow(''),
   GITHUB_CALLBACK_URL: Joi.string().uri().optional().allow(''),
 
-  // OpenAI -- optional in Phase 1 (AI features not yet implemented)
+  // OpenAI -- retained for future optional use; not used in Day 6 (see ADR-008)
   OPENAI_API_KEY: Joi.string().optional().allow(''),
+
+  // Ollama -- local LLM provider (Day 6, ADR-008).
+  // OLLAMA_BASE_URL: base HTTP URL of the running Ollama instance.
+  // OLLAMA_MODEL:    model tag to use for inference (must be pulled in Ollama).
+  // OLLAMA_TIMEOUT_MS: max ms to wait for a single Ollama response before aborting.
+  OLLAMA_BASE_URL: Joi.string().uri().default('http://localhost:11434'),
+  OLLAMA_MODEL: Joi.string().default('qwen2.5-coder:7b'),
+  OLLAMA_TIMEOUT_MS: Joi.number().integer().min(1000).default(60000),
 
   // DAY 4 VALIDATION BYPASS -- remove in Phase 5 when auth is implemented.
   // Provides a TeamLead ID for DevelopersController without a JWT token.

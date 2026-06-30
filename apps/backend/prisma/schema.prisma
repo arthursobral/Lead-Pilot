@@ -89,6 +89,17 @@ enum FactConfidence {
   HIGH   // Direct human observation, explicit customer feedback, clear GitHub data
 }
 
+// Classifies what kind of structured fact was extracted.
+// Used by the Knowledge Engine to organise context before passing to AI.
+enum FactType {
+  ACTIVITY_SIGNAL       // "Merged 12 PRs during the period"
+  COLLABORATION_SIGNAL  // "Gave 18 code reviews during the period"
+  METRIC_PATTERN        // "Average PR size is 380 LOC, above typical range"
+  OBSERVATION_FACT      // Derived from a human-recorded Observation
+  ACHIEVEMENT           // A significant positive moment worth surfacing
+  COACHING_SIGNAL       // A pattern that may warrant a coaching conversation
+}
+
 // =============================================================================
 // TEAM LEAD
 // =============================================================================
@@ -385,7 +396,6 @@ model Observation {
   developer       Developer       @relation(fields: [developerId], references: [id])
   teamLead        TeamLead        @relation(fields: [teamLeadId], references: [id])
   timelineEntries TimelineEntry[]
-  facts           Fact[]
 
   @@index([developerId])
   @@index([teamLeadId])
@@ -452,38 +462,36 @@ model TimelineEntry {
 // Facts reduce hallucination by grounding every AI Insight in specific,
 // stored evidence rather than letting the LLM reason from raw data.
 //
-// sources: Json array of { type, id } objects.
-//   A fact can be derived from heterogeneous sources -- observations,
-//   pull requests, metric snapshots, or other facts.
+// evidence: Json array of FactEvidence objects.
+//   [{ sourceType: 'METRIC_SNAPSHOT'|'OBSERVATION'|'TIMELINE_ENTRY', sourceId: string }]
 //   Json avoids a polymorphic join table; the Knowledge Engine resolves IDs.
 //
-// observationId: optional direct FK to the primary source observation.
-//   Allows "which facts came from this observation?" without parsing Json.
+// dedupKey: deterministic idempotency key.
+//   Format: "<developerId>:<type>:<primarySourceId>:<periodStart(date)>"
+//   Upsert on this key ensures generate-facts is safe to run multiple times.
 //
 // Temporal scope:
 //   periodStart + periodEnd -> "Reviewed 18 PRs in June"
-//   occurredAt              -> "Received customer praise on Jun 10"
+//   Both are required -- every fact must be scoped to an explicit period.
 model Fact {
   id          String         @id @default(cuid())
   developerId String
+  type        FactType
   statement   String         // Human-readable factual statement
   confidence  FactConfidence
-  sources     Json           // [{ type: 'observation'|'pull_request'|'metric_snapshot', id: string }]
-
-  periodStart DateTime? // Fact covers a period
-  periodEnd   DateTime?
-  occurredAt  DateTime? // Or a specific point in time
-
-  observationId String? // Direct FK to primary observation source (optional)
+  evidence    Json           // FactEvidence[] = [{ sourceType, sourceId }]
+  dedupKey    String         @unique // developerId:type:primarySourceId:periodStart(date)
+  periodStart DateTime
+  periodEnd   DateTime
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  developer    Developer    @relation(fields: [developerId], references: [id])
-  observation  Observation? @relation(fields: [observationId], references: [id])
+  developer    Developer     @relation(fields: [developerId], references: [id])
   factInsights FactInsight[]
 
-  @@index([developerId])
-  @@index([confidence])
+  @@index([developerId, periodStart, periodEnd])
+  @@index([type])
   @@map("facts")
 }
 

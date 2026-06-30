@@ -4,27 +4,32 @@ import { InsightsController } from './insights.controller';
 import { InsightsService } from './insights.service';
 import { InsightsRepository } from './insights.repository';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
+import { FactsModule } from '../facts/facts.module';
+import { AiModule } from '../ai/ai.module';
 import { QUEUES } from '../../jobs/queues';
 
 /**
- * InsightsModule generates AI coaching insights.
+ * InsightsModule -- AI-powered coaching insight generation.
  *
- * It receives a Context Pack from KnowledgeModule, calls the OpenAI API,
- * parses the structured response, and stores Insights and TalkingPoints.
+ * Dependency graph:
+ *   InsightsService
+ *     <- KnowledgeModule  (buildContextPack)
+ *     <- FactsModule      (generate facts before building pack)
+ *     <- AiModule         (OllamaProvider, PromptBuilderService, InsightParserService)
+ *     <- InsightsRepository
  *
- * The AI integration stack (Phase 5):
- *   KnowledgeService → ContextPack
- *   InsightsService  → OpenAI call
- *   PromptBuilder    → builds the prompt
- *   ResponseParser   → validates and parses structured output
+ * The AI_INSIGHTS BullMQ queue is pre-registered for Phase 5 background jobs.
+ * Day 6 uses synchronous HTTP generation for local validation.
  */
 @Module({
   imports: [
     KnowledgeModule,
+    FactsModule,
+    AiModule,
     BullModule.registerQueue({ name: QUEUES.AI_INSIGHTS }),
   ],
   controllers: [InsightsController],
-  providers: [InsightsService, InsightsRepository],
-  exports: [InsightsService],
+  providers:   [InsightsService, InsightsRepository],
+  exports:     [InsightsService],
 })
 export class InsightsModule {}

@@ -17,10 +17,12 @@ import { TimelineBuilderService } from './timeline-builder.service';
  *   TimelineBuilderService -- pure normalizer; KnowledgeModule injects it to
  *                             build context packs from raw domain entities without
  *                             additional DB reads.
+ *   TimelineRepository     -- exported so KnowledgeModule can call
+ *                             findByDeveloperAndPeriod() when assembling ContextPacks.
  */
 @Module({
   controllers: [TimelineController],
   providers: [TimelineService, TimelineRepository, TimelineBuilderService],
-  exports: [TimelineService, TimelineBuilderService],
+  exports: [TimelineService, TimelineBuilderService, TimelineRepository],
 })
 export class TimelineModule {}
