@@ -31,14 +31,14 @@ export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps): React.Reac
       <img
         src={imageUrl}
         alt={name}
-        className={`${sizeClasses[size]} rounded-full object-cover ring-1 ring-stone-200`}
+        className={`${sizeClasses[size]} rounded-full object-cover ring-1 ring-stone-200 dark:ring-stone-700`}
       />
     );
   }
 
   return (
     <div
-      className={`${sizeClasses[size]} flex items-center justify-center rounded-full bg-stone-200 font-medium text-stone-600`}
+      className={`${sizeClasses[size]} flex items-center justify-center rounded-full bg-stone-200 dark:bg-stone-700 font-medium text-stone-600 dark:text-stone-400`}
       aria-label={name}
     >
       {initials}

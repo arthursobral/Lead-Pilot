@@ -9,7 +9,7 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { FactsService } from '../facts/facts.service';
 import { LLM_PROVIDER, ILlmProvider } from '../ai/interfaces/llm-provider.interface';
 import { PromptBuilderService } from '../ai/prompt-builder.service';
-import { InsightParserService } from '../ai/insight-parser.service';
+import { InsightParserService, InsightParseException } from '../ai/insight-parser.service';
 import { InsightsRepository } from './insights.repository';
 import type { ValidatedInsight } from '../ai/types/ai.types';
 import type { InsightResponseDto, TalkingPointResponseDto, PaginatedInsightsResponseDto } from './dto/insight-response.dto';
@@ -101,7 +101,22 @@ export class InsightsService {
     const raw = await this.llmProvider.chat(systemPrompt, userPrompt);
 
     // Step 6: parse and validate structure
-    const parsedSet = this.insightParser.parse(raw);
+    // InsightParseException means the LLM returned malformed JSON or an invalid
+    // structure -- this is a recoverable client-facing error (retry generation),
+    // not an internal server error. Map to 422 so the frontend can surface a
+    // meaningful message instead of a generic 500.
+    let parsedSet: ReturnType<typeof this.insightParser.parse>;
+    try {
+      parsedSet = this.insightParser.parse(raw);
+    } catch (err) {
+      if (err instanceof InsightParseException) {
+        throw new UnprocessableEntityException(
+          `The AI returned an invalid response and could not be parsed. ` +
+          `Try generating again. Detail: ${err.message}`,
+        );
+      }
+      throw err;
+    }
 
     // Step 7: validate factIds per ADR-008 rules 3 and 4
     const validatedInsights: ValidatedInsight[] = [];

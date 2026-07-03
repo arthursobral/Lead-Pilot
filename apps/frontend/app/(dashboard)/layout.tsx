@@ -27,7 +27,7 @@ export default function DashboardLayout({
 }): React.ReactElement {
   return (
     <QueryProvider>
-      <div className="flex h-full min-h-screen bg-stone-50">
+      <div className="flex h-full min-h-screen bg-stone-50 dark:bg-stone-950">
         <Sidebar />
         <main className="ml-[240px] flex-1 overflow-y-auto">
           <div className="mx-auto max-w-content px-8 py-10">

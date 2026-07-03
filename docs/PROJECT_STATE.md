@@ -18,12 +18,13 @@ The goal is to keep both human contributors and AI agents synchronized on the pr
 
 ## Current Phase
 
-Day 7 -- Reports
+Day 8 -- Reports
 
 Current Focus
 
-Day 6 AI Engine is complete. Next milestone: Weekly Reports and Developer/Team
-Summary dashboards. The Insight + TalkingPoint pipeline is operational and tested.
+Day 7 Frontend MVP is complete. All 5 pages wired with real data, Inter font, Linear-style
+design tokens (shadow-card, shadow-card-hover, rounded-2xl), TSC passing EXIT:0.
+Next milestone: Weekly Reports and Developer/Team Summary dashboards.
 
 ---
 
@@ -240,7 +241,7 @@ Prerequisites (local dev)
 
 ## Sprint Goal
 
-Build the Reports layer (Day 7).
+Build the Reports layer (Day 8).
 
 Modules:
 
@@ -252,17 +253,53 @@ Modules:
 
 ## In Progress
 
-Nothing in progress. Day 6 AI Engine is complete and validated.
+**[BLOCKING] API contract mismatches — must fix before user testing.**
+Three frontend services type paginated backend responses as flat arrays.
+Causes runtime TypeError on timeline, insights, and observations list views.
+Fix: unwrap `.data` in each service method (see DAY7_REVIEW.md §1 Architecture).
 
 ---
 
 # Upcoming Milestones
 
-## Day 7
+## Day 7 -- Frontend MVP
+
+Status
+
+Complete (2026-06-30, TSC EXIT:0) — Day 7 Review completed 2026-07-02 (see docs/DAY7_REVIEW.md)
+
+Deliverables
+
+* Next.js 14 App Router, TypeScript strict mode
+* Inter via next/font/google (zero layout shift, self-hosted)
+* Tailwind design tokens: shadow-card, shadow-card-hover, rounded-2xl, ease-out-quart
+* 5 pages: Team (/), Developers (/developers), Developer profile (/developers/[id]),
+  Insights (/developers/[id]/insights), Timeline (/developers/[id]/timeline),
+  Add Observation (/observations/new)
+* All pages wired to real backend API (TanStack Query v5)
+* Linear-style sidebar with logomark
+* Linear-style underline tabs (developer profile)
+* Notion-style EmptyState (icon-led, no dashed border)
+* Badge label maps (human-readable -- no raw enum strings in UI)
+* InsightCard with talking points, dot color per type, model/period footer
+* ObservationCard with severity dot, muted type badges
+* TimelineEntryItem with vertical connector, tabular-nums dates
+* GenerateInsightsForm with honest generation-time messaging
+* React Hook Form + Zod observation form
+* Skeleton loaders for all list and card patterns
+
+Review Findings (2026-07-02)
+
+* Constitution compliance: High (20/20 articles respected in implementation)
+* Architecture: Clean service/hook/component layering; TanStack Query v5 correct
+* Design: Design token system consistent; content cap 720px; vocabulary aligned with Product Vision
+* Motion: Calm and intentional; fill-mode:both prevents flash; no CSS animation conflicts
+* 3 blocking bugs found (API contract mismatch -- timeline, insights, observations services)
+* MVP is NOT ready for user testing as-is; ready after ~1h of targeted fixes
+
+## Day 8
 
 Reports
-
-Dashboard Polish
 
 Weekly Reports (developer summary, team summary)
 
@@ -371,7 +408,7 @@ Not Started
 * No insights.mapper.ts -- DTO mapping is in private functions in insights.service.ts,
   inconsistent with the Observations/Timeline mapper convention.
 
-Priority
+Priority (Backend)
 
 High (InsightParseException → 422): user-facing correctness issue; fix before Day 7 frontend.
 High (prisma generate): eliminates runtime `as any` casts.
@@ -379,6 +416,27 @@ Medium (InsightsService BullMQ): generation can take 30-60s; synchronous is frag
 Medium (Insight deduplication): production correctness concern.
 Medium (ContextPack size bound): production resilience concern.
 Low (all others): no blocking technical debt for Day 7.
+
+Frontend Technical Debt (added Day 7 Review, 2026-07-02)
+
+BLOCKING: timelineService.getByDeveloper -- returns TimelineEntry[] but backend returns
+  PaginatedTimelineResponseDto. Causes runtime TypeError (.filter on non-array).
+BLOCKING: insightsService.getByDeveloper -- same mismatch with PaginatedInsightsResponseDto.
+BLOCKING: observationsService.getByDeveloper -- same mismatch with PaginatedObservationsResponseDto.
+  Fix for all three: unwrap .data from the paginated envelope in each service method.
+High: /developers/[id]/observations/page.tsx uses Next.js 15 async params syntax (Promise<{id}>
+  + use()) on Next.js 14 -- runtime risk; change params type to { id: string }, remove use().
+High: No ESLint config -- next lint fails; no linting enforced. Add eslint.config.js.
+High: No React error boundary -- uncaught render errors crash to blank screen.
+Medium: InsightType label and dot color maps duplicated in 3 components -- extract to constants/insight.ts.
+Medium: lib/utils.ts (formatDate, formatRelativeDate, cn) defined but never imported -- dead code.
+Medium: DeveloperTabs missing aria-current="page" on active tab.
+Medium: GenerateInsightsForm <label> elements not associated with inputs (htmlFor missing).
+Medium: ObservationCard has animate-fade-in-up on root AND parent stagger wrapper -- redundant.
+Medium: useContextPack missing 'use client' directive.
+Low: Avatar component missing role="img".
+Low: Observation form severity radio group missing <fieldset>/<legend>.
+Low: No focus restoration when ObservationEditDialog closes.
 
 ---
 
@@ -438,6 +496,7 @@ Current ADRs:
 * ADR-006: Fact extraction rules (v2 -- 14 rules, Day 6)
 * ADR-007: ContextPack enrichment (timeline + evidenceMap)
 * ADR-008: Local LLM via Ollama + qwen2.5-coder:7b (Day 6)
+* ADR-009: Frontend architecture -- client-only data fetching, service/hook/component separation (Day 7)
 
 Before making architectural changes:
 
@@ -500,11 +559,20 @@ docs/ARCHITECT_DECISIONS.md
 
 # Next Goal
 
-Begin Day 7 -- Reports.
+Fix 3 blocking API contract bugs, then begin Day 8 -- Reports.
 
+Day 7 (Frontend MVP) complete but NOT user-testing ready (see docs/DAY7_REVIEW.md).
 Day 6 (AI Engine) is complete: 351 tests passing, 0 failures.
 
-Day 7 should implement:
+Pre-user-testing fixes (do these first, ~1h total):
+
+1. Fix timelineService.getByDeveloper: unwrap PaginatedTimelineResponseDto.data
+2. Fix insightsService.getByDeveloper: unwrap PaginatedInsightsResponseDto.data
+3. Fix observationsService.getByDeveloper: unwrap PaginatedObservationsResponseDto.data
+4. Fix /developers/[id]/observations/page.tsx: remove Promise<> wrapper + use() on params
+5. Verify all 5 pages load data with backend running
+
+Day 8 should implement:
 
 * WeeklyReport model (Prisma schema migration)
 * WeeklyReportService: aggregate Insights + Metrics + Observations for a period
@@ -512,12 +580,13 @@ Day 7 should implement:
 * Developer summary: structured summary of a developer's period
 * Team summary: aggregate view across all developers on a team
 
-Pre-conditions for Day 7:
+Pre-conditions for Day 8:
 
-1. Run `npx prisma migrate dev --name add-weekly-report` after updating schema.
-2. Read ADR-004 (Knowledge Engine firewall) -- reports consume Insights, not raw LLM.
-3. Read ADR-005 (no productivity scores) -- summaries must use hedged language.
-4. Verify `npx jest` still passes before starting.
+1. Apply all 5 pre-user-testing fixes above.
+2. Run `npx prisma migrate dev --name add-weekly-report` after updating schema.
+3. Read ADR-004 (Knowledge Engine firewall) -- reports consume Insights, not raw LLM.
+4. Read ADR-005 (no productivity scores) -- summaries must use hedged language.
+5. Verify `npx jest` still passes before starting.
 
 Local dev pre-conditions (for testing AI endpoints):
 
