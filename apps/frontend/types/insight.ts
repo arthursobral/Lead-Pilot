@@ -2,7 +2,7 @@
  * Insight types.
  *
  * Insights are AI-generated interpretations grounded in evidence.
- * They are hypotheses, not conclusions.
+ * They are hypotheses, not conclusions. Language in summaries is always hedged.
  */
 export type InsightType =
   | 'POSITIVE_SIGNAL'
@@ -14,17 +14,20 @@ export type InsightType =
   | 'COMMUNICATION_SIGNAL'
   | 'LEADERSHIP_SIGNAL';
 
+export interface TalkingPoint {
+  id: string;
+  text: string;
+  order: number;
+}
+
 export interface Insight {
   id: string;
   developerId: string;
   type: InsightType;
   summary: string;
-  evidence: string[];
+  model: string | null;
+  periodStart: string;
+  periodEnd: string;
   createdAt: string;
-}
-
-export interface TalkingPoint {
-  id: string;
-  insightId: string;
-  text: string;
+  talkingPoints: TalkingPoint[];
 }

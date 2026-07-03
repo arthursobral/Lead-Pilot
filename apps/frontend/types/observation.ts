@@ -25,15 +25,30 @@ export interface Observation {
   severity: ObservationSeverity;
   summary: string;
   detail?: string;
-  date: string;
+  occurredAt: string;
   createdAt: string;
 }
 
+/**
+ * Fields sent to POST /developers/:developerId/observations.
+ * developerId is in the URL -- never in the body.
+ * The date field is occurredAt (ISO 8601), matching the backend DTO.
+ */
 export interface CreateObservationDto {
-  developerId: string;
   type: ObservationType;
   severity: ObservationSeverity;
   summary: string;
   detail?: string;
-  date: string;
+  occurredAt: string;
+}
+
+/**
+ * All fields optional -- PATCH semantics.
+ * occurredAt is immutable on the backend and intentionally excluded.
+ */
+export interface UpdateObservationDto {
+  type?: ObservationType;
+  severity?: ObservationSeverity;
+  summary?: string;
+  detail?: string;
 }

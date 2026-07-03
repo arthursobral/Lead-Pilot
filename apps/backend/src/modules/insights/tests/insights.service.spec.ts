@@ -4,7 +4,7 @@ import { KnowledgeService } from '../../knowledge/knowledge.service';
 import { FactsService } from '../../facts/facts.service';
 import type { ILlmProvider } from '../../ai/interfaces/llm-provider.interface';
 import { PromptBuilderService } from '../../ai/prompt-builder.service';
-import { InsightParserService } from '../../ai/insight-parser.service';
+import { InsightParserService, InsightParseException } from '../../ai/insight-parser.service';
 import { InsightsRepository } from '../insights.repository';
 import { InsightType, FactConfidence } from '@prisma/client';
 import { FactType } from '../../facts/types/facts.types';
@@ -207,6 +207,21 @@ describe('InsightsService', () => {
         insights: [
           { type: InsightType.POSITIVE_SIGNAL, summary: 'S', talkingPoints: ['TP'], factIds: ['fact-HALLUCINATED'] },
         ],
+      });
+
+      await expect(
+        service.generate(DEV_ID, LEAD_ID, PERIOD_S, PERIOD_E),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('throws UnprocessableEntityException (not 500) when parser throws InsightParseException', async () => {
+      // Ensures malformed LLM JSON surfaces as 422 to the client, not a generic 500.
+      const { service, knowledgeService, llmProvider, insightParser } = buildService();
+
+      jest.mocked(knowledgeService.buildContextPack).mockResolvedValue(makePack(['fact-1']));
+      jest.mocked(llmProvider.chat as jest.Mock).mockResolvedValue('not valid json');
+      jest.mocked(insightParser.parse).mockImplementation(() => {
+        throw new InsightParseException('LLM response is not valid JSON.');
       });
 
       await expect(

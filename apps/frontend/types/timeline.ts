@@ -10,13 +10,14 @@ export type TimelineEntryType =
   | 'ACHIEVEMENT'
   | 'INSIGHT'
   | 'REPORT'
-  | 'MILESTONE';
+  | 'MILESTONE'
+  | 'METRIC_SNAPSHOT';
 
 export interface TimelineEntry {
   id: string;
   type: TimelineEntryType;
   summary: string;
   detail?: string;
-  date: string;
+  occurredAt: string;
   sourceId?: string;
 }

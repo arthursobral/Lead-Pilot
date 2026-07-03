@@ -704,6 +704,127 @@ so InsightsService remains unchanged.
 
 ---
 
+
+---
+
+# ADR-009
+
+Date
+
+2026-07-02
+
+Status
+
+Accepted
+
+## Context
+
+Day 7 introduced the frontend layer. Multiple significant architectural decisions were
+made implicitly during development: how to fetch data, where to place business logic,
+how to manage server state, and how to handle the AI disclaimer requirement from the
+Engineering Constitution (Article VI and Article XVIII).
+
+Zero frontend ADRs existed before this record. The Engineering Constitution (Article
+XIII) requires explicit documentation of architectural decisions. This ADR captures
+the four most consequential frontend decisions made during Day 7.
+
+## Decision
+
+**1. Client-only data fetching with TanStack Query v5.**
+
+All API calls are made from client components using TanStack Query. No Server
+Components fetch data. No React Server Actions are used.
+
+Rationale: LeadPilot is a single-user admin tool accessed by an authenticated team
+lead. There is no SEO requirement, no first-paint data requirement, and no requirement
+for streaming HTML. Client-side fetching with TanStack Query gives us shared cache,
+deduplication, automatic retries, and skeleton-loader patterns that are appropriate
+for a data-heavy tool. Server Components would add complexity (cookie forwarding,
+streaming boundaries, error handling across RSC/client boundaries) with no user-facing
+benefit at this stage.
+
+**2. Service/Hook/Component layering.**
+
+Frontend data access follows a strict three-layer architecture:
+- `services/` — raw API calls, no React, no TanStack Query
+- `hooks/` — TanStack Query wrappers, query key management, cache invalidation
+- `components/` — consume hooks only, no direct service calls
+
+No component may call `api.*` directly. No service may import from React or TanStack
+Query. This mirrors the backend's Controller/Service/Repository separation and makes
+each layer independently testable.
+
+**3. AI disclaimer is persistent and non-dismissible.**
+
+The `AiDisclaimer` component (shown on the Insights tab above all AI-generated content)
+is permanently visible and cannot be dismissed by the user. This implements Article VI
+(AI assists, never replaces leadership) and Article XVIII (build for explainability) of
+the Engineering Constitution at the UI level.
+
+Alternatives considered: dismissible banner (rejected — hides the limitation after first
+view, undermining the constitution's intent), footer text (rejected — too easy to miss),
+tooltip on each InsightCard (rejected — too disruptive to reading flow).
+
+**4. Paginated backend responses are consumed with a high-limit fetch for MVP.**
+
+The backend returns all list endpoints as paginated envelopes
+(`{data: T[], total, page, limit, totalPages}`). For the MVP, the frontend fetches with
+a high default limit (100 items) and unwraps `.data`, treating the response as a full
+list. Infinite scroll and cursor-based pagination are Phase 2.
+
+Note: the initial Day 7 implementation incorrectly typed these responses as flat arrays
+(`T[]`), causing a runtime contract mismatch. This was identified during the Day 7 review
+(2026-07-02) and must be corrected before user testing.
+
+## Alternatives Considered
+
+**Next.js Server Components with RSC data fetching**: Rejected for MVP. Introduces
+streaming boundaries, auth cookie forwarding complexity, and layout-level error handling
+that is not needed for a single-user admin tool. Revisit in Phase 3.
+
+**SWR instead of TanStack Query**: Rejected. TanStack Query v5 has stronger support for
+`useInfiniteQuery`, more explicit cache invalidation, and better TypeScript integration.
+The observation CRUD flow (create → invalidate timeline + observations) benefits from
+TanStack Query's granular invalidation API.
+
+**Inline API calls in components**: Rejected. Violates the service/hook/component
+boundary and makes queries untestable without mounting the full component tree.
+
+## Consequences
+
+Positive
+
+- Each layer is independently testable: services via HTTP mocks, hooks via QueryClient
+  wrappers, components via hook mocks.
+- TanStack Query cache prevents redundant network requests when navigating between
+  developer profile tabs.
+- The three-layer boundary is explicit — adding a new data source requires a new service
+  method, a new hook, and a new component section, in that order. No ambiguity.
+- The persistent AiDisclaimer is constitutionally correct and requires no future
+  state management.
+
+Negative
+
+- No SSR/SSG for initial page load — the first render is always a skeleton loader.
+  Acceptable for an admin tool, not acceptable for a public-facing product.
+- High-limit fetch (limit=100) is a pragmatic shortcut — large teams (>100 developers)
+  will hit this ceiling in Phase 2. Proper pagination required before GA.
+- Client-only fetching means data is only visible after JavaScript has loaded and
+  hydrated. Zero graceful degradation without JS.
+
+## Future Revisions
+
+Phase 2: Implement infinite scroll in ObservationList and InsightList using
+`useInfiniteQuery`. Replace high-limit shortcut with proper cursor-based pagination.
+
+Phase 3: Evaluate migrating heavy read views (DeveloperOverview) to Next.js Server
+Components once auth (JwtAuthGuard) is implemented and cookie forwarding is straightforward.
+
+Phase 3: Add React error boundaries at the dashboard layout level and per-tab level
+to prevent full-page crashes from isolated component failures.
+
+---
+
 # Rules for Future ADRs
 
 Create a new ADR whenever a decision changes:
